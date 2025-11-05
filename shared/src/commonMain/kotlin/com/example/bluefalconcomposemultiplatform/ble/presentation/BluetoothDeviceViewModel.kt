@@ -11,6 +11,8 @@ import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -33,6 +35,9 @@ class BluetoothDeviceViewModel(
     // Expose parsed Goober packets via StateFlow
     private val _parsedPackets: MutableStateFlow<Map<String, GooberPacket>> = MutableStateFlow(mapOf())
     val parsedPackets: StateFlow<Map<String, GooberPacket>> get() = _parsedPackets
+    
+    // Track continuous reading jobs per device
+    private val readingJobs: MutableMap<String, Job> = mutableMapOf()
     
     /**
      * Get the latest characteristic value (hex) for a peripheral (non-suspend for UI)
@@ -86,11 +91,15 @@ class BluetoothDeviceViewModel(
                         )
                     }
                     // Discover services after connection using the connected peripheral
-                    println("DEBUG: Calling discoverServices on ${event.peripheral.name}")
+                    // println("DEBUG: Calling discoverServices on ${event.peripheral.name}")
                     blueFalcon.discoverServices(event.peripheral)
                 }
 
                 is DeviceEvent.OnDeviceDisconnected -> {
+                    // Cancel continuous reading job for this device
+                    readingJobs[event.macId]?.cancel()
+                    readingJobs.remove(event.macId)
+                    
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let {
@@ -106,8 +115,8 @@ class BluetoothDeviceViewModel(
                 is DeviceEvent.OnCharacteristicReadComplete -> {
                     // Update latest characteristic value if it's UUID 00000001
                     val currentUuidString = event.characteristic.uuid.toString()
-                    println("DEBUG: OnCharacteristicReadComplete - UUID: $currentUuidString")
-                    println("DEBUG: Characteristic name: ${event.characteristic.name}")
+                    // println("DEBUG: OnCharacteristicReadComplete - UUID: $currentUuidString")
+                    // println("DEBUG: Characteristic name: ${event.characteristic.name}")
                     
                     // Target UUID - handle both short and full UUID formats
                     // Short: "0001" or "00000001"
@@ -122,30 +131,30 @@ class BluetoothDeviceViewModel(
                     val normalizedTargetShort = normalizeUuid(targetShortUuid)
                     val normalizedTargetShort2 = normalizeUuid(targetShortUuid2)
                     
-                    println("DEBUG: Comparing UUIDs - Current: $normalizedCurrent, Target: $normalizedTarget")
+                    // println("DEBUG: Comparing UUIDs - Current: $normalizedCurrent, Target: $normalizedTarget")
                     
                     val matches = normalizedCurrent == normalizedTarget || 
                                  normalizedCurrent == normalizedTargetShort || 
                                  normalizedCurrent == normalizedTargetShort2
                     
                     if (matches) {
-                        println("DEBUG: UUID matches! Updating latest value")
+                        // println("DEBUG: UUID matches! Updating latest value")
                         event.characteristic.value?.let { bytes ->
                             val hexValue = bytes.joinToString(" ", prefix = "[", postfix = "]") { 
                                 it.toHexString()
                             }
-                            println("DEBUG: Hex value: $hexValue")
+                            // println("DEBUG: Hex value: $hexValue")
                             
                             // Parse the bytes using gooberParse
                             val parsedPacket = gooberParse(bytes, bytes.size, debug = true)
                             
                             if (parsedPacket != null) {
-                                println("DEBUG: Successfully parsed Goober packet")
-                                println("  - DEV_ID: 0x${parsedPacket.devId.toString(16).padStart(2, '0').uppercase()}")
-                                println("  - DEV_MODE: 0x${parsedPacket.devMode.toString(16).padStart(2, '0').uppercase()}")
-                                println("  - SEQ_ID: 0x${parsedPacket.seqId.toString(16).padStart(2, '0').uppercase()}")
-                                println("  - MSG_CLS: ${parsedPacket.msgCls}")
-                                println("  - PAYLOAD_SIZE: ${parsedPacket.payloadSize}")
+                                // println("DEBUG: Successfully parsed Goober packet")
+                                // println("  - DEV_ID: 0x${parsedPacket.devId.toString(16).padStart(2, '0').uppercase()}")
+                                // println("  - DEV_MODE: 0x${parsedPacket.devMode.toString(16).padStart(2, '0').uppercase()}")
+                                // println("  - SEQ_ID: 0x${parsedPacket.seqId.toString(16).padStart(2, '0').uppercase()}")
+                                // println("  - MSG_CLS: ${parsedPacket.msgCls}")
+                                // println("  - PAYLOAD_SIZE: ${parsedPacket.payloadSize}")
                                 
                                 // Update parsed packets StateFlow
                                 _parsedPackets.update { current ->
@@ -154,7 +163,7 @@ class BluetoothDeviceViewModel(
                                     }
                                 }
                             } else {
-                                println("DEBUG: Failed to parse Goober packet - buffer may be too small or invalid")
+                                // println("DEBUG: Failed to parse Goober packet - buffer may be too small or invalid")
                             }
                             
                             // Update StateFlow for UI (keep hex value for backward compatibility)
@@ -165,19 +174,32 @@ class BluetoothDeviceViewModel(
                             }
                         }
                     } else {
-                        println("DEBUG: UUID does not match - skipping update")
+                        // println("DEBUG: UUID does not match - skipping update")
                     }
                 }
 
                 is DeviceEvent.OnCharacteristicWriteComplete -> {
-                    // Write completed - no action needed
+                    println("DEBUG WRITE: Write completed - Success: ${event.success}")
+                    
+                    // Resume continuous reading after successful write
+                    if (event.success) {
+                        val deviceState = _deviceState.value.devices[event.macId]
+                        if (deviceState?.connected == true && readingJobs[event.macId] == null) {
+                            println("  - Resuming continuous reading...")
+                            // Small delay to ensure write operation fully completes
+                            CoroutineScope(Dispatchers.IO).launch {
+                                delay(100)
+                                startContinuousReading(event.macId, deviceState.peripheral)
+                            }
+                        }
+                    }
                 }
 
                 is DeviceEvent.OnServicesDiscovered -> {
-                    println("DEBUG: Services discovered for ${event.peripheral.name}: ${event.peripheral.services.size} services")
-                    println("DEBUG: Event peripheral services details:")
+                    // println("DEBUG: Services discovered for ${event.peripheral.name}: ${event.peripheral.services.size} services")
+                    // println("DEBUG: Event peripheral services details:")
                     event.peripheral.services.forEach { (uuid, service) ->
-                        println("  - Service: ${service.name}, UUID: $uuid, Characteristics: ${service.characteristics.size}")
+                        // println("  - Service: ${service.name}, UUID: $uuid, Characteristics: ${service.characteristics.size}")
                     }
                     
                     _deviceState.update { state ->
@@ -185,12 +207,12 @@ class BluetoothDeviceViewModel(
                         // Update the peripheral with latest services
                         val peripheralState = updateDevices[event.peripheral.uuid]
                         if (peripheralState != null) {
-                            println("DEBUG: Updating peripheral in state with ${event.peripheral.services.size} services")
+                            // println("DEBUG: Updating peripheral in state with ${event.peripheral.services.size} services")
                             updateDevices[event.peripheral.uuid] = EnhancedBluetoothPeripheral(
                                 connected = peripheralState.connected,
                                 peripheral = event.peripheral
                             )
-                            println("DEBUG: After update, checking device in state:")
+                            // println("DEBUG: After update, checking device in state:")
                             val updatedDevice = updateDevices[event.peripheral.uuid]
                             println("  - Connected: ${updatedDevice?.connected}")
                             println("  - Services count in state: ${updatedDevice?.peripheral?.services?.size}")
@@ -199,6 +221,13 @@ class BluetoothDeviceViewModel(
                             devices = HashMap(updateDevices),
                             updateVersion = state.updateVersion + 1
                         )
+                    }
+                    
+                    // Start continuous reading if device is connected and has target characteristic
+                    val macId = event.peripheral.uuid
+                    val deviceState = _deviceState.value.devices[macId]
+                    if (deviceState?.connected == true) {
+                        startContinuousReading(macId, event.peripheral)
                     }
                 }
             }
@@ -219,6 +248,137 @@ class BluetoothDeviceViewModel(
                             devices = HashMap(updateDevices),
                             updateVersion = it.updateVersion + 1
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Start continuous reading for a device with target characteristic (UUID 00000001)
+     */
+    private fun startContinuousReading(macId: String, peripheral: BluetoothPeripheral) {
+        // Cancel any existing reading job for this device
+        readingJobs[macId]?.cancel()
+        
+        // Find the target characteristic (UUID 00000001)
+        val targetCharacteristic = peripheral.services.values.flatMap { it.characteristics }
+            .firstOrNull { characteristic ->
+                val characteristicUuidString = characteristic.uuid.toString()
+                val normalizedCharUuid = normalizeUuid(characteristicUuidString)
+                val targetUuidStrings = listOf(
+                    "00000001-0000-1000-8000-00805f9b34fb",
+                    "0001",
+                    "00000001"
+                )
+                targetUuidStrings.any { target ->
+                    val normalizedTarget = normalizeUuid(target)
+                    normalizedCharUuid == normalizedTarget
+                }
+            }
+        
+        targetCharacteristic?.let { characteristic ->
+            // println("DEBUG: Starting continuous reading for device $macId")
+            val job = CoroutineScope(Dispatchers.IO).launch {
+                while (true) {
+                    try {
+                        val currentDeviceState = _deviceState.value.devices[macId]
+                        if (currentDeviceState?.connected == true) {
+                            // Use the latest peripheral from state to ensure we have the most up-to-date reference
+                            val currentPeripheral = currentDeviceState.peripheral
+                            blueFalcon.readCharacteristic(currentPeripheral, characteristic)
+                            delay(10) // Small delay between reads (100ms)
+                        } else {
+                            // Device disconnected, exit loop
+                            break
+                        }
+                    } catch (e: Exception) {
+                        // println("DEBUG: Error during continuous read: ${e.message}")
+                        delay(10) // Wait before retrying
+                    }
+                }
+            }
+            readingJobs[macId] = job
+        } ?: println("DEBUG: Target characteristic not found for device $macId")
+    }
+
+    /**
+     * Sends a single byte command to the BLE characteristic with UUID 00000001.
+     * Writes the byte sequence: 0x69 0x00 0x01 (MSG_TYPE) 0x01
+     * 
+     * @param macId The MAC ID of the device
+     * @param msgType The MSG_TYPE byte value (0-255)
+     */
+    public fun sendSingleByteCommand(macId: String, msgType: UByte) {
+        _deviceState.value.devices[macId]?.let { deviceState ->
+            if (!deviceState.connected) {
+                return@let
+            }
+            
+            // Create the byte array: 0x69 0x00 0x01 (MSG_TYPE) 0x00
+            val byteArray = byteArrayOf(
+                0x69.toByte(),
+                0x00.toByte(),
+                0x01.toByte(),
+                msgType.toByte(),
+                0x01.toByte(),
+                0x01.toByte()
+            )
+            
+            // Get fresh device state and find characteristic from current state
+            _deviceState.value.devices[macId]?.let { currentDeviceState ->
+                // Find the target characteristic (UUID 00000001) from current state
+                val targetCharacteristic = currentDeviceState.peripheral.services.values.flatMap { it.characteristics }
+                    .firstOrNull { characteristic ->
+                        val characteristicUuidString = characteristic.uuid.toString()
+                        val normalizedCharUuid = normalizeUuid(characteristicUuidString)
+                        val targetUuidStrings = listOf(
+                            "00000001-0000-1000-8000-00805f9b34fb",
+                            "0001",
+                            "00000001"
+                        )
+                        targetUuidStrings.any { target ->
+                            val normalizedTarget = normalizeUuid(target)
+                            normalizedCharUuid == normalizedTarget
+                        }
+                    }
+                
+                targetCharacteristic?.let { characteristic ->
+                    // Convert byte array to string - each byte becomes a character
+                    // This is binary-safe and preserves exact byte values (like "123" example)
+                    val binaryString = buildString {
+                        byteArray.forEach { byte ->
+                            append(byte.toInt().toChar())
+                        }
+                    }
+                    
+                    println("DEBUG WRITE: Sending command to ${currentDeviceState.peripheral.name}")
+                    println("  - MSG_TYPE: 0x${msgType.toString(16).padStart(2, '0').uppercase()}")
+                    println("  - Characteristic UUID: ${characteristic.uuid}")
+                    println("  - Byte Array: ${byteArray.joinToString(" ") { byte -> 
+                        val hex = (byte.toInt() and 0xFF).toString(16).uppercase()
+                        "0x${hex.padStart(2, '0')}"
+                    }}")
+                    println("  - String length: ${binaryString.length} chars")
+                    
+                    // Stop continuous reading to allow write
+                    println("  - Stopping continuous reading...")
+                    readingJobs[macId]?.cancel()
+                    readingJobs.remove(macId)
+                    
+                    // Wait for cancellation to complete, then write
+                    CoroutineScope(Dispatchers.IO).launch {
+                        delay(200) // Wait for read cancellation to complete
+                        println("  - Calling writeCharacteristic with binary String...")
+                        blueFalcon.writeCharacteristic(currentDeviceState.peripheral, characteristic, binaryString, null)
+                        println("  - Write initiated, waiting for callback...")
+                        
+                        // Resume reading after a longer delay if no callback
+                        delay(2000)
+                        if (deviceState.connected && readingJobs[macId] == null) {
+                            println("  - No callback received, resuming reading...")
+                            startContinuousReading(macId, currentDeviceState.peripheral)
+                        }
                     }
                 }
             }
@@ -252,6 +412,9 @@ class BluetoothDeviceViewModel(
                 _deviceState.value.devices[event.macId]?.let { deviceState ->
                     blueFalcon.writeCharacteristic(deviceState.peripheral, event.characteristic, event.value, null)
                 }
+            }
+            is UiEvent.OnSendSingleByteCommand -> {
+                sendSingleByteCommand(event.macId, event.msgType)
             }
         }
     }

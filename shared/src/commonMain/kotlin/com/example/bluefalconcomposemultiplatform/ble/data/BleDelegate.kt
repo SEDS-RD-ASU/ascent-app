@@ -25,15 +25,15 @@ class BleDelegate: BlueFalconDelegate {
     ) {
         bluetoothCharacteristic.value?.let { bytes ->
             // Debug print the read characteristic values as bytes
-            println("DEBUG: Read characteristic value from ${bluetoothPeripheral.name}")
-            println("  - Characteristic UUID: ${bluetoothCharacteristic.uuid}")
-            println("  - Characteristic name: ${bluetoothCharacteristic.name ?: "Unknown"}")
-            println("  - Value length: ${bytes.size} bytes")
-            println("  - Value (hex): ${bytes.joinToString(" ", prefix = "[", postfix = "]") { 
-                val byte = it.toInt() and 0xFF
-                if (byte < 16) "0${byte.toString(16).uppercase()}" else byte.toString(16).uppercase()
-            }}")
-            println("  - Value (decimal): ${bytes.joinToString(", ", prefix = "[", postfix = "]")}")
+            // println("DEBUG: Read characteristic value from ${bluetoothPeripheral.name}")
+            // println("  - Characteristic UUID: ${bluetoothCharacteristic.uuid}")
+            // println("  - Characteristic name: ${bluetoothCharacteristic.name ?: "Unknown"}")
+            // println("  - Value length: ${bytes.size} bytes")
+            // println("  - Value (hex): ${bytes.joinToString(" ", prefix = "[", postfix = "]") { 
+            //     val byte = it.toInt() and 0xFF
+            //     if (byte < 16) "0${byte.toString(16).uppercase()}" else byte.toString(16).uppercase()
+            // }}")
+            // println("  - Value (decimal): ${bytes.joinToString(", ", prefix = "[", postfix = "]")}")
             
             // Notify that a characteristic read completed (value changed indicates read result)
             onDeviceEvent?.let {
@@ -46,7 +46,7 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didConnect(bluetoothPeripheral: BluetoothPeripheral) {
-        println("DEBUG: didConnect called for ${bluetoothPeripheral.name}")
+        // println("DEBUG: didConnect called for ${bluetoothPeripheral.name}")
         onDeviceEvent?.let {
             it(DeviceEvent.OnDeviceConnected(bluetoothPeripheral.uuid, bluetoothPeripheral))
         }
@@ -63,7 +63,7 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didDiscoverCharacteristics(bluetoothPeripheral: BluetoothPeripheral) {
-        println("DEBUG: didDiscoverCharacteristics called for ${bluetoothPeripheral.name}")
+        // println("DEBUG: didDiscoverCharacteristics called for ${bluetoothPeripheral.name}")
         
         // Debounce multiple characteristic discoveries - only update once after all are discovered
         val uuid = bluetoothPeripheral.uuid
@@ -78,7 +78,7 @@ class BleDelegate: BlueFalconDelegate {
     }
 
     override fun didDiscoverServices(bluetoothPeripheral: BluetoothPeripheral) {
-        println("DEBUG: didDiscoverServices called for ${bluetoothPeripheral.name}")
+        // println("DEBUG: didDiscoverServices called for ${bluetoothPeripheral.name}")
         onDeviceEvent?.let {
             it(DeviceEvent.OnServicesDiscovered(bluetoothPeripheral))
         }
@@ -103,6 +103,10 @@ class BleDelegate: BlueFalconDelegate {
         bluetoothCharacteristic: BluetoothCharacteristic,
         success: Boolean
     ) {
+        println("DEBUG WRITE: Write callback from ${bluetoothPeripheral.name}")
+        println("  - Characteristic UUID: ${bluetoothCharacteristic.uuid}")
+        println("  - Success: $success")
+        
         // Notify that a characteristic write completed
         onDeviceEvent?.let {
             it(com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent.OnCharacteristicWriteComplete(

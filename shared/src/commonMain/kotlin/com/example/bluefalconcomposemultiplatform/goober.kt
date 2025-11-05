@@ -161,15 +161,9 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
     val msgCls = GooberMsgType.fromByte(msgClsByte) 
         ?: GooberMsgType.MSG_TYPE_REQ_PINGPONG // Default fallback
     
-    // Bounds checking to prevent buffer overrun
-    val maxPayloadSize = GooberPayload.MAX_PAYLOAD_SIZE.toUByte()
-    var actualPayloadSize = if (payloadSize > maxPayloadSize) maxPayloadSize else payloadSize
-    
-    // Ensure we don't read beyond the available buffer
+    // Always read PAYLOAD_SIZE number of bytes, but ensure we don't read beyond the available buffer
     val availableBytes = (rxBufferSize - 5).toUByte() // 5 bytes for header
-    if (actualPayloadSize > availableBytes) {
-        actualPayloadSize = availableBytes
-    }
+    val actualPayloadSize = if (payloadSize > availableBytes) availableBytes else payloadSize
     
     // Extract payload bytes
     val payloadBytes = ByteArray(actualPayloadSize.toInt())
@@ -185,19 +179,19 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
             // Parse telemetry payload (33 bytes total)
             if (actualPayloadSize.toInt() >= 33) {
                 try {
-                    // Helper function to read bytes
+                    // Helper functions to read bytes in little-endian (C-like) format
                     fun ByteArray.readUInt(offset: Int): UInt {
-                        return ((this[offset].toUByte().toInt() shl 24) or
-                                (this[offset + 1].toUByte().toInt() shl 16) or
-                                (this[offset + 2].toUByte().toInt() shl 8) or
-                                (this[offset + 3].toUByte().toInt())).toUInt()
+                        return (this[offset].toUByte().toInt() or
+                                (this[offset + 1].toUByte().toInt() shl 8) or
+                                (this[offset + 2].toUByte().toInt() shl 16) or
+                                (this[offset + 3].toUByte().toInt() shl 24)).toUInt()
                     }
                     
                     fun ByteArray.readInt(offset: Int): Int {
-                        return (this[offset].toInt() shl 24) or
-                               ((this[offset + 1].toInt() and 0xFF) shl 16) or
-                               ((this[offset + 2].toInt() and 0xFF) shl 8) or
-                               (this[offset + 3].toInt() and 0xFF)
+                        return (this[offset].toInt() and 0xFF) or
+                               ((this[offset + 1].toInt() and 0xFF) shl 8) or
+                               ((this[offset + 2].toInt() and 0xFF) shl 16) or
+                               ((this[offset + 3].toInt() shl 24))
                     }
                     
                     fun ByteArray.readFloat(offset: Int): Float {
@@ -207,8 +201,11 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
                     }
                     
                     fun ByteArray.readUShort(offset: Int): UShort {
-                        return ((this[offset].toUByte().toInt() shl 8) or
-                                this[offset + 1].toUByte().toInt()).toUShort()
+                        // Read little-endian uint16_t: low byte first, then high byte
+                        // Ensure proper unsigned conversion without sign extension
+                        val byte0 = this[offset].toInt() and 0xFF
+                        val byte1 = this[offset + 1].toInt() and 0xFF
+                        return ((byte0) or (byte1 shl 8)).toUShort()
                     }
                     
                     val telemetry = GooberPostTelemetryPayload(
@@ -222,7 +219,7 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
                         pyroState = payloadBytes[28].toUByte(),
                         sats = payloadBytes[29].toUByte(),
                         flightState = payloadBytes[30].toUByte(),
-                        batteryVoltage = payloadBytes.readUShort(31)
+                        batteryVoltage = payloadBytes.readUShort(32)
                     )
                     GooberPayload.Telemetry(telemetry)
                 } catch (e: Exception) {
@@ -231,41 +228,6 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
                 }
             } else {
                 // Not enough bytes for telemetry, use raw
-                GooberPayload.Raw(payloadBytes)
-            }
-        }
-        GooberMsgType.MSG_TYPE_POST_LOCATE -> {
-            // Parse locator payload (16 bytes total)
-            if (actualPayloadSize.toInt() >= 16) {
-                try {
-                    fun ByteArray.readLong(offset: Int): Long {
-                        return ((this[offset].toLong() and 0xFF) shl 56) or
-                               ((this[offset + 1].toLong() and 0xFF) shl 48) or
-                               ((this[offset + 2].toLong() and 0xFF) shl 40) or
-                               ((this[offset + 3].toLong() and 0xFF) shl 32) or
-                               ((this[offset + 4].toLong() and 0xFF) shl 24) or
-                               ((this[offset + 5].toLong() and 0xFF) shl 16) or
-                               ((this[offset + 6].toLong() and 0xFF) shl 8) or
-                               (this[offset + 7].toLong() and 0xFF)
-                    }
-                    
-                    fun ByteArray.readInt(offset: Int): Int {
-                        return (this[offset].toInt() shl 24) or
-                               ((this[offset + 1].toInt() and 0xFF) shl 16) or
-                               ((this[offset + 2].toInt() and 0xFF) shl 8) or
-                               (this[offset + 3].toInt() and 0xFF)
-                    }
-                    
-                    val locate = GooberPostLocatorPayload(
-                        timestamp = payloadBytes.readLong(0),
-                        latitude = payloadBytes.readInt(8),
-                        longitude = payloadBytes.readInt(12)
-                    )
-                    GooberPayload.Locate(locate)
-                } catch (e: Exception) {
-                    GooberPayload.Raw(payloadBytes)
-                }
-            } else {
                 GooberPayload.Raw(payloadBytes)
             }
         }
@@ -288,7 +250,7 @@ fun gooberParse(rxBuffer: ByteArray, rxBufferSize: Int, debug: Boolean = false):
         payload = payload
     )
     
-    if (debug) {
+    if (false) {
         println("[GOOBER_PARSE] DEV_ID: 0x${devId.toString(16).padStart(2, '0').uppercase()}")
         println("[GOOBER_PARSE] DEV_MODE: 0x${devMode.toString(16).padStart(2, '0').uppercase()}")
         println("[GOOBER_PARSE] SEQ_ID: 0x${seqId.toString(16).padStart(2, '0').uppercase()}")

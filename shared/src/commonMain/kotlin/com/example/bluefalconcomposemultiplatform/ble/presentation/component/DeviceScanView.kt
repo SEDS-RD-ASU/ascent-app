@@ -51,11 +51,11 @@ fun DeviceScanView(
         LazyColumn {
             items(state.devices.values.toList().sortedByDescending { it.peripheral.name }) { device ->
                 // Debug logging
-                println("DEBUG UI: Rendering device ${device.peripheral.name}")
-                println("  - Connected: ${device.connected}")
-                println("  - Services in peripheral: ${device.peripheral.services.size}")
+                // println("DEBUG UI: Rendering device ${device.peripheral.name}")
+                // println("  - Connected: ${device.connected}")
+                // println("  - Services in peripheral: ${device.peripheral.services.size}")
                 val servicesList = device.peripheral.services.values.toList()
-                println("  - Services list: ${servicesList.size}")
+                // println("  - Services list: ${servicesList.size}")
                 
                 FoundDeviceCard(
                     deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",

@@ -9,4 +9,5 @@ sealed interface UiEvent {
 
     data class OnReadCharacteristic(val macId: String, val characteristic: BluetoothCharacteristic): UiEvent
     data class OnWriteCharacteristic(val macId: String, val characteristic: BluetoothCharacteristic, val value: String): UiEvent
+    data class OnSendSingleByteCommand(val macId: String, val msgType: UByte): UiEvent
 }

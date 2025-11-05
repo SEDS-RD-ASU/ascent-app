@@ -9,16 +9,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.bluefalconcomposemultiplatform.GooberMsgType
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.GooberPayload
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
@@ -55,6 +63,17 @@ private fun formatDouble(value: Double, decimals: Int = 2): String {
     return "$integerPart.$decimalPart"
 }
 
+// Helper function to format pyro state as "T T F F" format
+// Each bit represents a pyro channel: bit 0 = PYRO_CHANNEL_1, bit 1 = PYRO_CHANNEL_2, etc.
+// T = True (bit is set, pyro has continuity), F = False (bit is clear, no continuity)
+private fun formatPyroState(pyroState: kotlin.UByte): String {
+    val channel1 = if ((pyroState.toInt() and (1 shl 0)) != 0) "T" else "F"
+    val channel2 = if ((pyroState.toInt() and (1 shl 1)) != 0) "T" else "F"
+    val channel3 = if ((pyroState.toInt() and (1 shl 2)) != 0) "T" else "F"
+    val channel4 = if ((pyroState.toInt() and (1 shl 3)) != 0) "T" else "F"
+    return "$channel1 $channel2 $channel3 $channel4"
+}
+
 @OptIn(ExperimentalUuidApi::class)
 @Composable
 fun FoundDeviceCard(
@@ -88,7 +107,7 @@ fun FoundDeviceCard(
     val targetCharacteristic = services.flatMap { it.characteristics }
         .firstOrNull { characteristic ->
             val characteristicUuidString = characteristic.uuid.toString()
-            println("DEBUG UI: Checking characteristic UUID: $characteristicUuidString")
+            // println("DEBUG UI: Checking characteristic UUID: $characteristicUuidString")
             // Compare UUID strings (normalize for comparison)
             val normalizedCharUuid = normalizeUuidForComparison(characteristicUuidString)
             targetUuidStrings.any { target ->
@@ -297,36 +316,6 @@ fun FoundDeviceCard(
                                 
                                 Row(modifier = Modifier.padding(bottom = 3.dp)) {
                                     Text(
-                                        "Latitude: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${telemetry.latitude / 1_000_000.0}°",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Longitude: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${telemetry.longitude / 1_000_000.0}°",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
                                         "Altitude AGL: ",
                                         color = MaterialTheme.colorScheme.onSurface,
                                         fontSize = 9.sp,
@@ -393,10 +382,18 @@ fun FoundDeviceCard(
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
-                                        "0x${telemetry.pyroState.toString(16).padStart(2, '0').uppercase()}",
+                                        formatPyroState(telemetry.pyroState),
                                         color = MaterialTheme.colorScheme.secondary,
                                         fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        " (0x${telemetry.pyroState.toString(16).padStart(2, '0').uppercase()})",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 8.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(start = 4.dp)
                                     )
                                 }
                                 
@@ -438,7 +435,7 @@ fun FoundDeviceCard(
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
-                                        "${formatDouble(telemetry.batteryVoltage.toInt() / 1000.0)} V",
+                                        "${formatDouble(telemetry.batteryVoltage.toDouble() / 2500.0)} V",
                                         color = MaterialTheme.colorScheme.secondary,
                                         fontSize = 9.sp,
                                         fontFamily = FontFamily.Monospace
@@ -475,6 +472,58 @@ fun CharacteristicsRow(
     characteristic: BluetoothCharacteristic,
     onEvent: (UiEvent) -> Unit
 ) {
+    // State to track which confirmation dialog to show
+    var confirmationDialogType by remember { mutableStateOf<ConfirmationDialogType?>(null) }
+    
+    // Placeholder functions for buttons
+    fun onTxLockClick() {
+        confirmationDialogType = ConfirmationDialogType.TX_LOCK
+    }
+    
+    fun onAuxClick() {
+        confirmationDialogType = ConfirmationDialogType.AUX
+    }
+    
+    fun onRebootClick() {
+        confirmationDialogType = ConfirmationDialogType.REBOOT
+    }
+    
+    fun onWakeupClick() {
+        confirmationDialogType = ConfirmationDialogType.WAKEUP
+    }
+    
+    fun onApogeeClick() {
+        confirmationDialogType = ConfirmationDialogType.APOGEE
+    }
+    
+    fun onMainsClick() {
+        confirmationDialogType = ConfirmationDialogType.MAINS
+    }
+    
+    // Execute the actual action after confirmation
+    fun executeAction(type: ConfirmationDialogType) {
+        when (type) {
+            ConfirmationDialogType.TX_LOCK -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_TXLOCK_ACTIVATE.value))
+            }
+            ConfirmationDialogType.AUX -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_AUX_ACTIVATE.value))
+            }
+            ConfirmationDialogType.REBOOT -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_REBOOT.value))
+            }
+            ConfirmationDialogType.WAKEUP -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_WAKEUP.value))
+            }
+            ConfirmationDialogType.APOGEE -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_POP_APOGEE.value))
+            }
+            ConfirmationDialogType.MAINS -> {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_POP_MAINS.value))
+            }
+        }
+    }
+    
     Column(
         modifier = Modifier
             .padding(4.dp)
@@ -484,29 +533,156 @@ fun CharacteristicsRow(
             )
             .padding(6.dp)
     ) {
+        
+        // Top row: TX Lock, AUX: NA, Reboot
         Row(
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
         ) {
+            // TX Lock button (red)
             Button(
-                onClick = {
-                    onEvent(UiEvent.OnReadCharacteristic(macId, characteristic))
-                },
+                onClick = { onTxLockClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 4.dp)
+                    .padding(end = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFD32F2F) // Red
+                )
             ) {
-                Text("Read", fontSize = 8.sp)
+                Text("TX Lock", color = Color.White, fontSize = 10.sp)
             }
+            
+            // AUX: NA button (green)
             Button(
-                onClick = {
-                    onEvent(UiEvent.OnWriteCharacteristic(macId, characteristic, "123"))
-                },
+                onClick = { onAuxClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 4.dp)
+                    .padding(horizontal = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF8E24AA) // Purple
+                )
             ) {
-                Text("Write", fontSize = 8.sp)
+                Text("AUX", color = Color.White, fontSize = 10.sp)
+            }
+            
+            // Reboot button (red)
+            Button(
+                onClick = { onRebootClick() },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFD32F2F) // Red
+                )
+            ) {
+                Text("Reboot", color = Color.White, fontSize = 10.sp)
             }
         }
+        
+        // Bottom row: Wakeup, Apogee, Mains
+        Row(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Wakeup button (green)
+            Button(
+                onClick = { onWakeupClick() },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF388E3C) // Green
+                )
+            ) {
+                Text("Wakeup", color = Color.White, fontSize = 10.sp)
+            }
+            
+            // Apogee button (blue)
+            Button(
+                onClick = { onApogeeClick() },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1976D2) // Blue
+                )
+            ) {
+                Text("Apogee", color = Color.White, fontSize = 10.sp)
+            }
+            
+            // Mains button (dark gray with blue border)
+            Button(
+                onClick = { onMainsClick() },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1976D2) // Blue
+                )
+            ) {
+                Text("Mains", color = Color.White, fontSize = 10.sp)
+            }
+        }
+        
+        // Confirmation Dialog
+        confirmationDialogType?.let { dialogType ->
+            ConfirmationDialog(
+                dialogType = dialogType,
+                onConfirm = {
+                    executeAction(dialogType)
+                    confirmationDialogType = null
+                },
+                onDismiss = {
+                    confirmationDialogType = null
+                }
+            )
+        }
     }
+}
+
+// Enum to track which confirmation dialog to show
+private enum class ConfirmationDialogType(
+    val title: String,
+    val message: String
+) {
+    TX_LOCK("Confirm TX Lock", "Are you sure you want to activate TX Lock?"),
+    AUX("Confirm AUX", "Are you sure you want to activate AUX?"),
+    REBOOT("Confirm Reboot", "Are you sure you want to reboot the device?"),
+    WAKEUP("Confirm Wakeup", "Are you sure you want to wake up the device?"),
+    APOGEE("Confirm Apogee", "Are you sure you want to trigger Apogee?"),
+    MAINS("Confirm Mains", "Are you sure you want to trigger Mains?")
+}
+
+@Composable
+private fun ConfirmationDialog(
+    dialogType: ConfirmationDialogType,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = dialogType.title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = dialogType.message,
+                fontSize = 14.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Confirm")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
