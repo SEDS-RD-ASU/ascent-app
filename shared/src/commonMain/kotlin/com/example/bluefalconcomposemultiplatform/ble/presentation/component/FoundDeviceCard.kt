@@ -3,6 +3,7 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -166,7 +167,8 @@ fun FoundDeviceCard(
                 Button(
                     onClick = {
                         onEvent(UiEvent.OnConnectClick(macId))
-                    }
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text("Connect")
                 }
@@ -174,7 +176,8 @@ fun FoundDeviceCard(
                 Button(
                     onClick = {
                         onEvent(UiEvent.OnDisconnectClick(macId))
-                    }
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text("Disconnect")
                 }
@@ -545,10 +548,11 @@ fun CharacteristicsRow(
                 onClick = { onTxLockClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 4.dp),
+                    .padding(end = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFD32F2F) // Red
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("TX Lock", color = Color.White, fontSize = 10.sp)
             }
@@ -558,10 +562,11 @@ fun CharacteristicsRow(
                 onClick = { onAuxClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF8E24AA) // Purple
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("AUX", color = Color.White, fontSize = 10.sp)
             }
@@ -571,10 +576,11 @@ fun CharacteristicsRow(
                 onClick = { onRebootClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 4.dp),
+                    .padding(start = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFD32F2F) // Red
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("Reboot", color = Color.White, fontSize = 10.sp)
             }
@@ -589,10 +595,11 @@ fun CharacteristicsRow(
                 onClick = { onWakeupClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 4.dp),
+                    .padding(end = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF388E3C) // Green
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("Wakeup", color = Color.White, fontSize = 10.sp)
             }
@@ -602,10 +609,11 @@ fun CharacteristicsRow(
                 onClick = { onApogeeClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1976D2) // Blue
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("Apogee", color = Color.White, fontSize = 10.sp)
             }
@@ -615,10 +623,11 @@ fun CharacteristicsRow(
                 onClick = { onMainsClick() },
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 2.dp),
                 colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF1976D2) // Blue
-                )
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("Mains", color = Color.White, fontSize = 10.sp)
             }

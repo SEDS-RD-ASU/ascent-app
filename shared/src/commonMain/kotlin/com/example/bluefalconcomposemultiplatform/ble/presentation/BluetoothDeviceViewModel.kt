@@ -77,6 +77,9 @@ class BluetoothDeviceViewModel(
     }
 
     init {
+        // Start scanning automatically
+        blueFalcon.scan()
+        
         delegate.setListener {event ->
             when(event) {
                 is DeviceEvent.OnDeviceConnected -> {
@@ -387,10 +390,6 @@ class BluetoothDeviceViewModel(
 
     fun onEvent(event: UiEvent) {
         when(event) {
-            UiEvent.OnScanClick -> {
-                blueFalcon.scan()
-            }
-
             is UiEvent.OnConnectClick -> {
                 _deviceState.value.devices[event.macId]?.let {
                     blueFalcon.connect(it.peripheral, false)
