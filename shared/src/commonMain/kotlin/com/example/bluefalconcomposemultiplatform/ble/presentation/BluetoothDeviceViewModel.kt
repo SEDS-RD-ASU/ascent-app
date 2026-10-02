@@ -6,6 +6,7 @@ import com.example.bluefalconcomposemultiplatform.gooberParse
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothCharacteristic
+import dev.bluefalcon.BluetoothManagerState
 import dev.bluefalcon.BluetoothPeripheral
 import dev.icerock.moko.mvvm.viewmodel.ViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -77,9 +78,16 @@ class BluetoothDeviceViewModel(
     }
 
     init {
-        // Start scanning automatically
-        blueFalcon.scan()
-        
+        // Start scanning automatically once Bluetooth is ready. On iOS, scan() throws
+        // if called before CoreBluetooth reports powered on (e.g. right at app launch).
+        CoroutineScope(Dispatchers.Main).launch {
+            blueFalcon.managerState.collect { state ->
+                if (state == BluetoothManagerState.Ready) {
+                    blueFalcon.scan()
+                }
+            }
+        }
+
         delegate.setListener {event ->
             when(event) {
                 is DeviceEvent.OnDeviceConnected -> {
