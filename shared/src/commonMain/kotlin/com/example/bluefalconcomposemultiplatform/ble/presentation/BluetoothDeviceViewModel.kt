@@ -1,7 +1,9 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
+import com.example.bluefalconcomposemultiplatform.ble.data.BluetoothStatus
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
+import com.example.bluefalconcomposemultiplatform.ble.data.PlatformBluetooth
 import com.example.bluefalconcomposemultiplatform.gooberParse
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import dev.bluefalcon.BlueFalcon
@@ -19,10 +21,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.OptIn
+import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
+    private val platformBluetooth: PlatformBluetooth,
     delegate: BleDelegate = BleDelegate()
 ): ViewModel() {
 
@@ -39,7 +44,11 @@ class BluetoothDeviceViewModel(
     
     // Track continuous reading jobs per device
     private val readingJobs: MutableMap<String, Job> = mutableMapOf()
-    
+
+    // Clock for scan timing and "last heard" times, measured from when the view model starts
+    private val clockStart = TimeSource.Monotonic.markNow()
+    private fun now(): Duration = clockStart.elapsedNow()
+
     /**
      * Get the latest characteristic value (hex) for a peripheral (non-suspend for UI)
      */
@@ -78,13 +87,16 @@ class BluetoothDeviceViewModel(
     }
 
     init {
-        // Start scanning automatically once Bluetooth is ready. On iOS, scan() throws
-        // if called before CoreBluetooth reports powered on (e.g. right at app launch).
+        // Work out the Bluetooth status whenever BlueFalcon's state changes, and once a second for
+        // changes BlueFalcon doesn't report and to keep the timers ticking. The scan starts each
+        // time the status becomes Ready; scan() throws if called before that.
         CoroutineScope(Dispatchers.Main).launch {
-            blueFalcon.managerState.collect { state ->
-                if (state == BluetoothManagerState.Ready) {
-                    blueFalcon.scan()
-                }
+            blueFalcon.managerState.collect { refreshBluetoothStatus() }
+        }
+        CoroutineScope(Dispatchers.Main).launch {
+            while (true) {
+                delay(1000)
+                refreshBluetoothStatus()
             }
         }
 
@@ -262,6 +274,35 @@ class BluetoothDeviceViewModel(
                     }
                 }
             }
+        }
+    }
+
+    private fun refreshBluetoothStatus() {
+        val status = platformBluetooth.problem()
+            ?: if (blueFalcon.managerState.value == BluetoothManagerState.Ready) BluetoothStatus.Ready
+            else notReadyReason()
+        val wasReady = _deviceState.value.bluetoothStatus == BluetoothStatus.Ready
+        _deviceState.update { it.copy(bluetoothStatus = status, now = now()) }
+        if (status == BluetoothStatus.Ready && !wasReady) {
+            startScan()
+        }
+    }
+
+    // BlueFalcon only reports Ready/NotReady, but on iOS scan() throws a different exception for
+    // each not-ready Bluetooth state, so trying it tells us why Bluetooth isn't ready
+    private fun notReadyReason(): BluetoothStatus = try {
+        blueFalcon.scan()
+        BluetoothStatus.Ready
+    } catch (e: Exception) {
+        bluetoothStatusFor(e)
+    }
+
+    private fun startScan() {
+        try {
+            blueFalcon.scan()
+            _deviceState.update { it.copy(scanStartedAt = now()) }
+        } catch (e: Exception) {
+            _deviceState.update { it.copy(bluetoothStatus = bluetoothStatusFor(e)) }
         }
     }
 
