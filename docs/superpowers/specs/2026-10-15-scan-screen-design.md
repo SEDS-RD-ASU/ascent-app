@@ -74,7 +74,7 @@ Always dark, whatever the phone's light/dark setting.
   - A glow rising from the bottom edge: an ellipse 85% of the screen wide and 42% tall, centred
     just below the bottom, fading `rgba(255,170,40,.85)` → `rgba(255,110,30,.55)` (25%) →
     `rgba(140,29,64,.40)` (55%) → transparent (78%).
-  - About 25 small fixed stars in the upper half (white, 0.4–1.2 dp, 25–90% opacity).
+  - 27 small fixed stars, thinning out toward the bottom (white, 0.4–1.2 dp, 25–90% opacity).
 - **Colors:** text `#FFF7EC`, secondary text `#C9B8A6`, accent ASU gold `#FFC627` with `#1A1200` on
   it, cards `rgba(8,8,18,.58)` with a `rgba(255,255,255,.10)` border and 16 dp corners, empty signal
   bars `rgba(255,255,255,.18)`, connected dot `#3DDC84`.
@@ -187,7 +187,8 @@ gains `platformBluetooth`, which `App.kt` passes to the view model.
   status priority, exception mapping. Run on the iOS Simulator:
   `./gradlew :shared:iosSimulatorArm64Test`.
 - **On an iPhone**, after building and installing:
-  1. Bluetooth off in Control Center → "Bluetooth is off"; on again → searching starts.
+  1. Settings → Bluetooth off → "Bluetooth is off"; on again → searching starts. (Use Settings: the
+     Control Center toggle only disconnects accessories, and apps still see Bluetooth as on.)
   2. Settings → GOOBER Connect → Bluetooth off → "isn't allowed"; Open Settings goes to the right page.
   3. Board off → "Searching…", then "No ASCENT found yet" after 15 s.
   4. Board on → card appears; bars drop when walking away and recover when coming back.

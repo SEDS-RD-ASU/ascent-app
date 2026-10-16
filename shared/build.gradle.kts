@@ -104,3 +104,8 @@ dependencies {
     commonMainApi("dev.icerock.moko:mvvm-flow:0.16.1")
     commonMainApi("dev.icerock.moko:mvvm-flow-compose:0.16.1")
 }
+
+// Run the iOS unit tests on a simulator that ships with the installed Xcode
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    device.set("iPhone 17")
+}
