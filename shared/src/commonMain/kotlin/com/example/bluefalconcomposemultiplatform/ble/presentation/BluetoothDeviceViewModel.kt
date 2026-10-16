@@ -102,6 +102,8 @@ class BluetoothDeviceViewModel(
 
         delegate.setListener {event ->
             when(event) {
+                is DeviceEvent.OnAdvertisement -> onAdvertisement(event)
+
                 is DeviceEvent.OnDeviceConnected -> {
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
@@ -126,7 +128,9 @@ class BluetoothDeviceViewModel(
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let {
-                            updateDevices[event.macId] = it.copy(connected = false)
+                            // Count the moment of disconnecting as "heard", so the card doesn't show
+                            // as gone before the board's broadcasts come back
+                            updateDevices[event.macId] = it.copy(connected = false, lastSeenAt = now())
                         }
                         state.copy(
                             devices = HashMap(updateDevices),
@@ -231,10 +235,7 @@ class BluetoothDeviceViewModel(
                         val peripheralState = updateDevices[event.peripheral.uuid]
                         if (peripheralState != null) {
                             // println("DEBUG: Updating peripheral in state with ${event.peripheral.services.size} services")
-                            updateDevices[event.peripheral.uuid] = EnhancedBluetoothPeripheral(
-                                connected = peripheralState.connected,
-                                peripheral = event.peripheral
-                            )
+                            updateDevices[event.peripheral.uuid] = peripheralState.copy(peripheral = event.peripheral)
                             // println("DEBUG: After update, checking device in state:")
                             val updatedDevice = updateDevices[event.peripheral.uuid]
                             println("  - Connected: ${updatedDevice?.connected}")
@@ -256,24 +257,29 @@ class BluetoothDeviceViewModel(
             }
         }
         blueFalcon.delegates.add(delegate)
-        CoroutineScope(Dispatchers.IO).launch {
-            blueFalcon.peripherals.collect { peripherals ->
-                val uniqueKeys = _deviceState.value.devices.keys.toList()
-                val filteredPeripheral = peripherals.filter { 
-                    !uniqueKeys.contains(it.uuid) && 
-                    it.name?.contains("ASCENT", ignoreCase = true) == true
-                }
-                filteredPeripheral.map { peripheral ->
-                    _deviceState.update {
-                        val updateDevices = it.devices.toMutableMap()
-                        updateDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(false, peripheral)
-                        it.copy(
-                            devices = HashMap(updateDevices),
-                            updateVersion = it.updateVersion + 1
-                        )
-                    }
-                }
+    }
+
+    private fun onAdvertisement(event: DeviceEvent.OnAdvertisement) {
+        if (event.peripheral.name?.contains("ASCENT", ignoreCase = true) != true) return
+        val heardAt = now()
+        _deviceState.update { state ->
+            val devices = HashMap(state.devices)
+            val existing = devices[event.macId]
+            devices[event.macId] = if (existing == null) {
+                EnhancedBluetoothPeripheral(
+                    connected = false,
+                    peripheral = event.peripheral,
+                    rssi = event.rssi,
+                    lastSeenAt = heardAt
+                )
+            } else {
+                // Keep the existing peripheral: after connecting it holds the discovered services
+                existing.copy(
+                    rssi = event.rssi?.let { smoothRssi(existing.rssi, it) } ?: existing.rssi,
+                    lastSeenAt = heardAt
+                )
             }
+            state.copy(devices = devices, now = heardAt, updateVersion = state.updateVersion + 1)
         }
     }
 

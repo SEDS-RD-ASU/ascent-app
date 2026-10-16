@@ -11,7 +11,9 @@ import androidx.compose.ui.unit.dp
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceState
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import com.example.bluefalconcomposemultiplatform.ble.presentation.isGone
 import com.example.bluefalconcomposemultiplatform.ble.presentation.scanMessage
+import com.example.bluefalconcomposemultiplatform.ble.presentation.sinceLastSeen
 import kotlin.OptIn
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
@@ -22,9 +24,16 @@ fun DeviceScanView(
     onEvent: (UiEvent) -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    // Same order as before (by name), so cards don't jump around as signals change
+    val devices = state.devices.values.toList().sortedByDescending { it.peripheral.name }
+    // How long each board has been quiet, for boards that count as gone
+    val goneFor = devices.associate { device ->
+        device.peripheral.uuid to sinceLastSeen(state.now, device.lastSeenAt)
+            ?.takeIf { isGone(it, device.connected) }
+    }
     val message = scanMessage(
         status = state.bluetoothStatus,
-        audibleBoards = state.devices.size,
+        audibleBoards = devices.count { goneFor[it.peripheral.uuid] == null },
         scanningFor = state.scanStartedAt?.let { state.now - it }
     )
 
@@ -35,11 +44,12 @@ fun DeviceScanView(
         message?.let {
             item { ScanStatusMessage(it, onOpenSettings, Modifier.padding(bottom = 10.dp)) }
         }
-        items(state.devices.values.toList().sortedByDescending { it.peripheral.name }) { device ->
+        items(devices) { device ->
             FoundDeviceCard(
                 deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                 macId = device.peripheral.uuid,
-                rssi = device.peripheral.rssi,
+                rssi = device.rssi,
+                goneFor = goneFor[device.peripheral.uuid],
                 services = device.peripheral.services.values.toList(),
                 connected = device.connected,
                 parsedPacket = parsedPackets[device.peripheral.uuid],
