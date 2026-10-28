@@ -1,7 +1,7 @@
 # Pre-flight checklist
 
 - **Date:** 2026-10-22; revised 2026-10-26 to use the team's own checklist
-- **Status:** Design approved; implementation not started
+- **Status:** Implemented on branch `preflight-checklist`; checked on iPhone without a board; live readings and Android not yet checked
 - **Platforms:** iOS and Android (shared Compose Multiplatform code, plus small platform pieces)
 - **Builds on:** the scan screen work on branch `scan-screen-redesign`
   ([2026-10-15-scan-screen-design.md](2026-10-15-scan-screen-design.md))
