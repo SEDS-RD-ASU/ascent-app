@@ -3,6 +3,8 @@ package com.example.bluefalconcomposemultiplatform.di
 import android.content.Context
 import com.example.bluefalconcomposemultiplatform.ble.data.AndroidPlatformBluetooth
 import com.example.bluefalconcomposemultiplatform.ble.data.PlatformBluetooth
+import com.example.bluefalconcomposemultiplatform.checklist.AndroidChecklistStorage
+import com.example.bluefalconcomposemultiplatform.checklist.ChecklistStorage
 import dev.bluefalcon.ApplicationContext
 import dev.bluefalcon.BlueFalcon
 
@@ -18,4 +20,6 @@ actual class AppModule(
     }
 
     actual val platformBluetooth: PlatformBluetooth = AndroidPlatformBluetooth(context)
+
+    actual val checklistStorage: ChecklistStorage = AndroidChecklistStorage(context)
 }
