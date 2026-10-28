@@ -123,11 +123,10 @@ fun App(
     }
 }
 
-// What the checklist needs to know about a board. Telemetry isn't kept per board yet, so for now the
-// readings say "no data yet".
+// What the checklist needs to know about a board, including its latest telemetry
 private fun EnhancedBluetoothPeripheral.toBoardSnapshot() = BoardSnapshot(
     name = peripheral.name?.takeIf { it.isNotBlank() } ?: "No Name",
     connected = connected,
-    telemetry = null,
-    telemetryAt = null
+    telemetry = lastTelemetry,
+    telemetryAt = lastTelemetryAt
 )

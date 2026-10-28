@@ -6,6 +6,7 @@ import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import com.example.bluefalconcomposemultiplatform.ble.data.PlatformBluetooth
 import com.example.bluefalconcomposemultiplatform.gooberParse
 import com.example.bluefalconcomposemultiplatform.GooberPacket
+import com.example.bluefalconcomposemultiplatform.GooberPayload
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothManagerState
@@ -187,6 +188,21 @@ class BluetoothDeviceViewModel(
                                 _parsedPackets.update { current ->
                                     current.toMutableMap().apply {
                                         put(event.macId, parsedPacket)
+                                    }
+                                }
+
+                                // Keep the latest telemetry per board for the pre-flight checklist. Moving
+                                // `now` along with it keeps the packet's age from going negative.
+                                (parsedPacket.payload as? GooberPayload.Telemetry)?.let { telemetry ->
+                                    val receivedAt = now()
+                                    _deviceState.update { state ->
+                                        val device = state.devices[event.macId] ?: return@update state
+                                        val devices = HashMap(state.devices)
+                                        devices[event.macId] = device.copy(
+                                            lastTelemetry = telemetry.payload,
+                                            lastTelemetryAt = receivedAt
+                                        )
+                                        state.copy(devices = devices, now = receivedAt)
                                     }
                                 }
                             } else {
