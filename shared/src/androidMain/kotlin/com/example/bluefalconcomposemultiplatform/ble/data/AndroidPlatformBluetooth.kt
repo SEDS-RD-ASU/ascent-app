@@ -28,7 +28,8 @@ class AndroidPlatformBluetooth(private val context: Context) : PlatformBluetooth
         context.startActivity(intent)
     }
 
-    // Matches what MainActivity asks for: scan + connect on Android 12+, fine location before that
+    // Scanning needs scan + connect on Android 12+ (the manifest marks them neverForLocation), and fine
+    // location before that
     private fun hasScanPermissions(): Boolean {
         val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)

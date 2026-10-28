@@ -91,10 +91,11 @@ class BluetoothDeviceViewModel(
         // Work out the Bluetooth status whenever BlueFalcon's state changes, and once a second for
         // changes BlueFalcon doesn't report and to keep the timers ticking. The scan starts each
         // time the status becomes Ready; scan() throws if called before that.
-        CoroutineScope(Dispatchers.Main).launch {
+        // Both run in viewModelScope (on the main thread), so they stop when the view model is cleared.
+        viewModelScope.launch {
             blueFalcon.managerState.collect { refreshBluetoothStatus() }
         }
-        CoroutineScope(Dispatchers.Main).launch {
+        viewModelScope.launch {
             while (true) {
                 delay(1000)
                 refreshBluetoothStatus()
