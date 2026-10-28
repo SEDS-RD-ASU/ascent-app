@@ -2,8 +2,7 @@ package com.example.bluefalconcomposemultiplatform.core.presentation
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import com.example.bluefalconcomposemultiplatform.ui.theme.DarkColorScheme
-import com.example.bluefalconcomposemultiplatform.ui.theme.LightColorScheme
+import com.example.bluefalconcomposemultiplatform.ui.theme.LaunchGlowColorScheme
 import com.example.bluefalconcomposemultiplatform.ui.theme.Typography
 
 @Composable
@@ -12,8 +11,9 @@ actual fun BlueFalconTheme(
     dynamicColor: Boolean,
     content: @Composable () -> Unit
 ) {
+    // Launch Glow is always dark, so the phone's light/dark setting doesn't change the colors
     MaterialTheme(
-        colorScheme = if(darkTheme) DarkColorScheme else LightColorScheme,
+        colorScheme = LaunchGlowColorScheme,
         typography = Typography,
         content = content
     )

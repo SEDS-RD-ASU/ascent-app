@@ -21,6 +21,7 @@
 
     <application
         android:allowBackup="false"
+        android:label="GOOBER Connect"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
