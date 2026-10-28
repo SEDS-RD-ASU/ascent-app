@@ -42,9 +42,11 @@ fun DeviceScanView(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
     ) {
         message?.let {
-            item { ScanStatusMessage(it, onOpenSettings, Modifier.padding(bottom = 10.dp)) }
+            item(key = "scan-status") { ScanStatusMessage(it, onOpenSettings, Modifier.padding(bottom = 10.dp)) }
         }
-        items(devices) { device ->
+        // Keyed by board, so state kept inside a card (like an open command dialog) stays with that board
+        // when the list reorders
+        items(devices, key = { it.peripheral.uuid }) { device ->
             FoundDeviceCard(
                 deviceName = if (!device.peripheral.name.isNullOrBlank()) device.peripheral.name else "No Name",
                 macId = device.peripheral.uuid,
