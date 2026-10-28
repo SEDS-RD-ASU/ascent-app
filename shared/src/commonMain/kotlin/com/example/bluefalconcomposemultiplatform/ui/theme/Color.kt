@@ -22,3 +22,12 @@ val ConnectedGreen = Color(0xFF3DDC84)
 val CommandRed = Color(0xFFD32F2F)
 val CommandPurple = Color(0xFF8E24AA)
 val CommandGreen = Color(0xFF388E3C)
+
+// Pre-flight checklist (the tick itself is ConnectedGreen, #3DDC84)
+val CheckGreenText = Color(0xFF7EE8AE)          // stamps and fine readings
+val OnCheckGreen = Color(0xFF062012)            // the tick mark inside the green circle
+val ProblemRedText = Color(0xFFFF8A80)          // readings with a problem
+val RingEmpty = Color(0x59FFFFFF)               // white at 35%: a step not ticked yet
+val RowDivider = Color(0x0FFFFFFF)              // white at 6%
+val ReadingBlockBackground = Color(0x47000000)  // black at 28%
+val ReadingBlockBorder = Color(0x12FFFFFF)      // white at 7%
