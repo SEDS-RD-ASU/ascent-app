@@ -1,9 +1,12 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation
 
 import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
+import com.example.bluefalconcomposemultiplatform.ble.data.BluetoothStatus
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
+import com.example.bluefalconcomposemultiplatform.ble.data.PlatformBluetooth
 import com.example.bluefalconcomposemultiplatform.gooberParse
 import com.example.bluefalconcomposemultiplatform.GooberPacket
+import com.example.bluefalconcomposemultiplatform.GooberPayload
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothManagerState
@@ -19,10 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.OptIn
+import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 class BluetoothDeviceViewModel(
     private val blueFalcon: BlueFalcon,
+    private val platformBluetooth: PlatformBluetooth,
     delegate: BleDelegate = BleDelegate()
 ): ViewModel() {
 
@@ -39,7 +45,11 @@ class BluetoothDeviceViewModel(
     
     // Track continuous reading jobs per device
     private val readingJobs: MutableMap<String, Job> = mutableMapOf()
-    
+
+    // Clock for scan timing and "last heard" times, measured from when the view model starts
+    private val clockStart = TimeSource.Monotonic.markNow()
+    private fun now(): Duration = clockStart.elapsedNow()
+
     /**
      * Get the latest characteristic value (hex) for a peripheral (non-suspend for UI)
      */
@@ -78,18 +88,24 @@ class BluetoothDeviceViewModel(
     }
 
     init {
-        // Start scanning automatically once Bluetooth is ready. On iOS, scan() throws
-        // if called before CoreBluetooth reports powered on (e.g. right at app launch).
-        CoroutineScope(Dispatchers.Main).launch {
-            blueFalcon.managerState.collect { state ->
-                if (state == BluetoothManagerState.Ready) {
-                    blueFalcon.scan()
-                }
+        // Work out the Bluetooth status whenever BlueFalcon's state changes, and once a second for
+        // changes BlueFalcon doesn't report and to keep the timers ticking. The scan starts each
+        // time the status becomes Ready; scan() throws if called before that.
+        // Both run in viewModelScope (on the main thread), so they stop when the view model is cleared.
+        viewModelScope.launch {
+            blueFalcon.managerState.collect { refreshBluetoothStatus() }
+        }
+        viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                refreshBluetoothStatus()
             }
         }
 
         delegate.setListener {event ->
             when(event) {
+                is DeviceEvent.OnAdvertisement -> onAdvertisement(event)
+
                 is DeviceEvent.OnDeviceConnected -> {
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
@@ -114,7 +130,16 @@ class BluetoothDeviceViewModel(
                     _deviceState.update { state ->
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let {
-                            updateDevices[event.macId] = it.copy(connected = false)
+                            // Count the moment of disconnecting as "heard", so the card doesn't show
+                            // as gone before the board's broadcasts come back. Drop the stored telemetry
+                            // too: after a reconnect the checklist waits for a packet from the new
+                            // connection instead of judging the old one.
+                            updateDevices[event.macId] = it.copy(
+                                connected = false,
+                                lastSeenAt = now(),
+                                lastTelemetry = null,
+                                lastTelemetryAt = null
+                            )
                         }
                         state.copy(
                             devices = HashMap(updateDevices),
@@ -173,6 +198,21 @@ class BluetoothDeviceViewModel(
                                         put(event.macId, parsedPacket)
                                     }
                                 }
+
+                                // Keep the latest telemetry per board for the pre-flight checklist. Moving
+                                // `now` along with it keeps the packet's age from going negative.
+                                (parsedPacket.payload as? GooberPayload.Telemetry)?.let { telemetry ->
+                                    val receivedAt = now()
+                                    _deviceState.update { state ->
+                                        val device = state.devices[event.macId] ?: return@update state
+                                        val devices = HashMap(state.devices)
+                                        devices[event.macId] = device.copy(
+                                            lastTelemetry = telemetry.payload,
+                                            lastTelemetryAt = receivedAt
+                                        )
+                                        state.copy(devices = devices, now = receivedAt)
+                                    }
+                                }
                             } else {
                                 // println("DEBUG: Failed to parse Goober packet - buffer may be too small or invalid")
                             }
@@ -219,10 +259,7 @@ class BluetoothDeviceViewModel(
                         val peripheralState = updateDevices[event.peripheral.uuid]
                         if (peripheralState != null) {
                             // println("DEBUG: Updating peripheral in state with ${event.peripheral.services.size} services")
-                            updateDevices[event.peripheral.uuid] = EnhancedBluetoothPeripheral(
-                                connected = peripheralState.connected,
-                                peripheral = event.peripheral
-                            )
+                            updateDevices[event.peripheral.uuid] = peripheralState.copy(peripheral = event.peripheral)
                             // println("DEBUG: After update, checking device in state:")
                             val updatedDevice = updateDevices[event.peripheral.uuid]
                             println("  - Connected: ${updatedDevice?.connected}")
@@ -244,24 +281,58 @@ class BluetoothDeviceViewModel(
             }
         }
         blueFalcon.delegates.add(delegate)
-        CoroutineScope(Dispatchers.IO).launch {
-            blueFalcon.peripherals.collect { peripherals ->
-                val uniqueKeys = _deviceState.value.devices.keys.toList()
-                val filteredPeripheral = peripherals.filter { 
-                    !uniqueKeys.contains(it.uuid) && 
-                    it.name?.contains("ASCENT", ignoreCase = true) == true
-                }
-                filteredPeripheral.map { peripheral ->
-                    _deviceState.update {
-                        val updateDevices = it.devices.toMutableMap()
-                        updateDevices[peripheral.uuid] = EnhancedBluetoothPeripheral(false, peripheral)
-                        it.copy(
-                            devices = HashMap(updateDevices),
-                            updateVersion = it.updateVersion + 1
-                        )
-                    }
-                }
+    }
+
+    private fun onAdvertisement(event: DeviceEvent.OnAdvertisement) {
+        if (event.peripheral.name?.contains("ASCENT", ignoreCase = true) != true) return
+        val heardAt = now()
+        _deviceState.update { state ->
+            val devices = HashMap(state.devices)
+            val existing = devices[event.macId]
+            devices[event.macId] = if (existing == null) {
+                EnhancedBluetoothPeripheral(
+                    connected = false,
+                    peripheral = event.peripheral,
+                    rssi = event.rssi,
+                    lastSeenAt = heardAt
+                )
+            } else {
+                // Keep the existing peripheral: after connecting it holds the discovered services
+                existing.copy(
+                    rssi = event.rssi?.let { smoothRssi(existing.rssi, it) } ?: existing.rssi,
+                    lastSeenAt = heardAt
+                )
             }
+            state.copy(devices = devices, now = heardAt, updateVersion = state.updateVersion + 1)
+        }
+    }
+
+    private fun refreshBluetoothStatus() {
+        val status = platformBluetooth.problem()
+            ?: if (blueFalcon.managerState.value == BluetoothManagerState.Ready) BluetoothStatus.Ready
+            else notReadyReason()
+        val wasReady = _deviceState.value.bluetoothStatus == BluetoothStatus.Ready
+        _deviceState.update { it.copy(bluetoothStatus = status, now = now()) }
+        if (status == BluetoothStatus.Ready && !wasReady) {
+            startScan()
+        }
+    }
+
+    // BlueFalcon only reports Ready/NotReady, but on iOS scan() throws a different exception for
+    // each not-ready Bluetooth state, so trying it tells us why Bluetooth isn't ready
+    private fun notReadyReason(): BluetoothStatus = try {
+        blueFalcon.scan()
+        BluetoothStatus.Ready
+    } catch (e: Exception) {
+        bluetoothStatusFor(e)
+    }
+
+    private fun startScan() {
+        try {
+            blueFalcon.scan()
+            _deviceState.update { it.copy(scanStartedAt = now()) }
+        } catch (e: Exception) {
+            _deviceState.update { it.copy(bluetoothStatus = bluetoothStatusFor(e)) }
         }
     }
 

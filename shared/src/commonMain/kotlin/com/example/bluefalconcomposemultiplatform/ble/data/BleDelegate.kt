@@ -19,6 +19,15 @@ class BleDelegate: BlueFalconDelegate {
     fun setListener(onEvent: (DeviceEvent) -> Unit) {
         onDeviceEvent = onEvent
     }
+
+    override fun didDiscoverDevice(
+        bluetoothPeripheral: BluetoothPeripheral,
+        advertisementData: Map<AdvertisementDataRetrievalKeys, Any>
+    ) {
+        onDeviceEvent?.let {
+            it(DeviceEvent.OnAdvertisement(bluetoothPeripheral.uuid, bluetoothPeripheral, bluetoothPeripheral.rssi))
+        }
+    }
     override fun didCharacteristcValueChanged(
         bluetoothPeripheral: BluetoothPeripheral,
         bluetoothCharacteristic: BluetoothCharacteristic
