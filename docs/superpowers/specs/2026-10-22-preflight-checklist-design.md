@@ -258,7 +258,8 @@ doesn't parse gives an empty checklist.
   `lastTelemetryAt` (when it arrived, on the view model's clock).
 - **`BluetoothDeviceViewModel`:** when a read gives a telemetry packet, it sets those two fields and
   refreshes the state's `now`, so the packet's age is never negative. Other packet types don't touch
-  them. The existing `parsedPackets` and the connected card are unchanged.
+  them. Disconnecting clears both, so a reconnected board shows "no data yet" until it sends a packet
+  on the new connection. The existing `parsedPackets` and the connected card are unchanged.
 - **`App.kt`:**
   - Keeps which screen is showing (scan or checklist) and draws it over the Launch Glow background.
   - The scan screen shows the header, the entry row and the device list.

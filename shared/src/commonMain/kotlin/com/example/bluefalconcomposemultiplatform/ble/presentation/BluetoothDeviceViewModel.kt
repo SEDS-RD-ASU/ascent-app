@@ -131,8 +131,15 @@ class BluetoothDeviceViewModel(
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let {
                             // Count the moment of disconnecting as "heard", so the card doesn't show
-                            // as gone before the board's broadcasts come back
-                            updateDevices[event.macId] = it.copy(connected = false, lastSeenAt = now())
+                            // as gone before the board's broadcasts come back. Drop the stored telemetry
+                            // too: after a reconnect the checklist waits for a packet from the new
+                            // connection instead of judging the old one.
+                            updateDevices[event.macId] = it.copy(
+                                connected = false,
+                                lastSeenAt = now(),
+                                lastTelemetry = null,
+                                lastTelemetryAt = null
+                            )
                         }
                         state.copy(
                             devices = HashMap(updateDevices),
