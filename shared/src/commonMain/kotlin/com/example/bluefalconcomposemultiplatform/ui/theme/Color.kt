@@ -18,10 +18,11 @@ val CardBorder = Color(0x1AFFFFFF)       // white at 10%
 val SignalTrack = Color(0x2EFFFFFF)      // white at 18%
 val ConnectedGreen = Color(0xFF3DDC84)
 
-// Command button colors (unchanged from before the redesign)
-val CommandRed = Color(0xFFD32F2F)
-val CommandPurple = Color(0xFF8E24AA)
-val CommandGreen = Color(0xFF388E3C)
+// Board commands: plain buttons, with red kept for what can't be undone (Erase Flash uses ProblemRedText)
+val PlainButton = Color(0x1CFFFFFF)       // white at 11%
+val CommandRed = Color(0xFFD32F2F)        // the pops and the arm switch
+val HoldTrack = Color(0xFF7A1E1E)         // a hold-to-confirm button before it fills
+val HoldFill = Color(0xFFE53935)          // its fill
 
 // Pre-flight checklist (the tick itself is ConnectedGreen, #3DDC84)
 val CheckGreenText = Color(0xFF7EE8AE)          // stamps and fine readings

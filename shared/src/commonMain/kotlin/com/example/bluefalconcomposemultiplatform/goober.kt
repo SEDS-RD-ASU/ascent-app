@@ -33,33 +33,6 @@ enum class AscentMessageClass(val code: UByte) {
     }
 }
 
-// Codes from an older protocol, still sent by the card's old command buttons. They go when those
-// buttons are replaced.
-enum class GooberMsgType(val value: UByte) {
-    // POST message types
-    MSG_TYPE_POST_PINGPONG(0xFFu),
-    MSG_TYPE_POST_TXLOCK_ACTIVATE(0x83u),
-    MSG_TYPE_POST_TELEM(0xCAu),
-    MSG_TYPE_POST_LOCATE(0xE3u),
-
-    // REQ message types
-    MSG_TYPE_REQ_PINGPONG(0x01u),
-    MSG_TYPE_REQ_TELEM(0x02u),
-    MSG_TYPE_REQ_AUX_ACTIVATE(0x0Au),
-    MSG_TYPE_REQ_AUX_DEACTIVATE(0x0Bu),
-    MSG_TYPE_REQ_TXLOCK_ACTIVATE(0x14u),
-    MSG_TYPE_REQ_REBOOT(0x1Eu),
-    MSG_TYPE_REQ_POP_APOGEE(0x69u),
-    MSG_TYPE_REQ_POP_MAINS(0x6Au),
-    MSG_TYPE_REQ_WAKEUP(0x6Bu);
-
-    companion object {
-        fun fromByte(byte: UByte): GooberMsgType? {
-            return values().find { it.value == byte }
-        }
-    }
-}
-
 // The telemetry payload (ascent_telemetry_t in the firmware): 34 little-endian bytes laid out like the
 // C struct, with one padding byte before the battery
 data class GooberPostTelemetryPayload(

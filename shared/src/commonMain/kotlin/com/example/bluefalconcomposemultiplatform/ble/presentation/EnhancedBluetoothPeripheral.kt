@@ -16,5 +16,7 @@ data class EnhancedBluetoothPeripheral(
     val lastTelemetryAt: Duration? = null,
     // The board's reads come back as single bytes: first-byte firmware (flight, dev), which sends its
     // battery but no telemetry over Bluetooth
-    val batteryOnlyReads: Boolean = false
+    val batteryOnlyReads: Boolean = false,
+    // When the board's pops were armed, on the wall clock (milliseconds since 1970); null when not armed
+    val pyroArmedAtMillis: Long? = null
 )

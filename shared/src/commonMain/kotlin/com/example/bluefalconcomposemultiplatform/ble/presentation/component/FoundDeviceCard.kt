@@ -3,7 +3,6 @@ package com.example.bluefalconcomposemultiplatform.ble.presentation.component
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,18 +14,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -38,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.AscentMessageClass
-import com.example.bluefalconcomposemultiplatform.GooberMsgType
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.GooberPayload
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
@@ -46,9 +37,6 @@ import com.example.bluefalconcomposemultiplatform.ble.presentation.signalBars
 import com.example.bluefalconcomposemultiplatform.ui.theme.AsuGold
 import com.example.bluefalconcomposemultiplatform.ui.theme.CardBackground
 import com.example.bluefalconcomposemultiplatform.ui.theme.CardBorder
-import com.example.bluefalconcomposemultiplatform.ui.theme.CommandGreen
-import com.example.bluefalconcomposemultiplatform.ui.theme.CommandPurple
-import com.example.bluefalconcomposemultiplatform.ui.theme.CommandRed
 import com.example.bluefalconcomposemultiplatform.ui.theme.ConnectedGreen
 import com.example.bluefalconcomposemultiplatform.ui.theme.OnAsuGold
 import com.example.bluefalconcomposemultiplatform.ui.theme.SignalTrack
@@ -224,7 +212,12 @@ fun FoundDeviceCard(
             PacketPanel(parsedPacket, batteryOnlyReads, Modifier.padding(top = 12.dp))
             // Commands need the target characteristic, which appears once services are discovered
             if (targetCharacteristic != null) {
-                CommandPanel(macId, onEvent, Modifier.padding(top = 10.dp))
+                CommandPanel(
+                    boardName = deviceName ?: "No Name",
+                    macId = macId,
+                    onEvent = onEvent,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
             }
         }
     }
@@ -295,116 +288,3 @@ private fun hex(value: UByte): String = "0x${value.toString(16).padStart(2, '0')
 
 // A packet's class by its firmware name, e.g. "TELEMETRY", or as hex if the app doesn't know it
 private fun messageClassName(code: UByte): String = AscentMessageClass.fromCode(code)?.name ?: hex(code)
-
-// What each command button's color means; shown in the key under the buttons
-private enum class CommandKind(val color: Color, val title: String, val description: String) {
-    SYSTEM(CommandRed, "System", "Locks the radio or restarts the board"),
-    AUXILIARY(CommandPurple, "Auxiliary", "Switches on the AUX output"),
-    WAKE(CommandGreen, "Wake", "Wakes the board up")
-}
-
-// Commands the app can send. Apogee and Mains (MSG_TYPE_REQ_POP_*) are deliberately left out:
-// Bluetooth can't reach the rocket in flight and the protocol doesn't confirm they were received.
-private enum class BoardCommand(
-    val label: String,
-    val kind: CommandKind,
-    val msgType: GooberMsgType,
-    val confirmTitle: String,
-    val confirmMessage: String
-) {
-    TX_LOCK("TX Lock", CommandKind.SYSTEM, GooberMsgType.MSG_TYPE_REQ_TXLOCK_ACTIVATE,
-        "Confirm TX Lock", "Are you sure you want to activate TX Lock?"),
-    AUX("AUX", CommandKind.AUXILIARY, GooberMsgType.MSG_TYPE_REQ_AUX_ACTIVATE,
-        "Confirm AUX", "Are you sure you want to activate AUX?"),
-    REBOOT("Reboot", CommandKind.SYSTEM, GooberMsgType.MSG_TYPE_REQ_REBOOT,
-        "Confirm Reboot", "Are you sure you want to reboot the device?"),
-    WAKEUP("Wakeup", CommandKind.WAKE, GooberMsgType.MSG_TYPE_REQ_WAKEUP,
-        "Confirm Wakeup", "Are you sure you want to wake up the device?")
-}
-
-@Composable
-private fun CommandPanel(macId: String, onEvent: (UiEvent) -> Unit, modifier: Modifier = Modifier) {
-    // The command waiting for confirmation, if any
-    var pendingCommand by remember { mutableStateOf<BoardCommand?>(null) }
-
-    Column(modifier.fillMaxWidth()) {
-        listOf(
-            listOf(BoardCommand.TX_LOCK, BoardCommand.AUX),
-            listOf(BoardCommand.REBOOT, BoardCommand.WAKEUP)
-        ).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                row.forEach { command ->
-                    Button(
-                        onClick = { pendingCommand = command },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = command.kind.color,
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(vertical = 10.dp)
-                    ) {
-                        Text(command.label, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-        CommandLegend(Modifier.padding(top = 6.dp))
-    }
-
-    pendingCommand?.let { command ->
-        ConfirmationDialog(
-            command = command,
-            onConfirm = {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, command.msgType.value))
-                pendingCommand = null
-            },
-            onDismiss = { pendingCommand = null }
-        )
-    }
-}
-
-@Composable
-private fun CommandLegend(modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth()) {
-        HorizontalDivider(color = CardBorder)
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            CommandKind.entries.forEach { kind ->
-                Row(Modifier.weight(1f)) {
-                    Box(
-                        Modifier
-                            .padding(top = 3.dp)
-                            .size(10.dp)
-                            .background(kind.color, RoundedCornerShape(3.dp))
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Column {
-                        Text(kind.title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(kind.description, color = TextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConfirmationDialog(
-    command: BoardCommand,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(command.confirmTitle, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
-        text = { Text(command.confirmMessage, fontSize = 14.sp) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Confirm") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
