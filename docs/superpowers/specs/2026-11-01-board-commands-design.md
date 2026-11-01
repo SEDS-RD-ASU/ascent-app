@@ -1,7 +1,7 @@
 # Board commands
 
 - **Date:** 2026-11-01
-- **Status:** Design approved; not implemented yet
+- **Status:** Implemented on branch `board-commands`; unit-tested; not yet checked with a board (the Mac didn't show up as one) or on Android
 - **Platforms:** iOS and Android (shared Compose Multiplatform code)
 - **Builds on:** the pre-flight checklist work on branch `preflight-checklist`
   ([2026-10-22-preflight-checklist-design.md](2026-10-22-preflight-checklist-design.md))
