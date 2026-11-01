@@ -55,6 +55,7 @@ fun DeviceScanView(
                 services = device.peripheral.services.values.toList(),
                 connected = device.connected,
                 parsedPacket = parsedPackets[device.peripheral.uuid],
+                batteryOnlyReads = device.batteryOnlyReads,
                 onEvent = onEvent
             )
         }

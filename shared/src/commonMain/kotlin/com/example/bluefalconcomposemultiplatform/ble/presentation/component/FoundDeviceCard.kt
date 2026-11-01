@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.bluefalconcomposemultiplatform.AscentMessageClass
 import com.example.bluefalconcomposemultiplatform.GooberMsgType
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.GooberPayload
@@ -107,6 +108,8 @@ fun FoundDeviceCard(
     services: List<BluetoothService>,
     connected: Boolean,
     parsedPacket: GooberPacket?,
+    // The board's reads are single bytes: its firmware sends no telemetry over Bluetooth
+    batteryOnlyReads: Boolean,
     onEvent: (UiEvent) -> Unit
 ) {
     // Helper function to normalize UUID for comparison (handles short and full formats)
@@ -218,7 +221,7 @@ fun FoundDeviceCard(
 
         // Telemetry and commands for a connected board
         if (connected) {
-            PacketPanel(parsedPacket, Modifier.padding(top = 12.dp))
+            PacketPanel(parsedPacket, batteryOnlyReads, Modifier.padding(top = 12.dp))
             // Commands need the target characteristic, which appears once services are discovered
             if (targetCharacteristic != null) {
                 CommandPanel(macId, onEvent, Modifier.padding(top = 10.dp))
@@ -228,7 +231,7 @@ fun FoundDeviceCard(
 }
 
 @Composable
-private fun PacketPanel(packet: GooberPacket?, modifier: Modifier = Modifier) {
+private fun PacketPanel(packet: GooberPacket?, batteryOnlyReads: Boolean, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = modifier
@@ -247,7 +250,8 @@ private fun PacketPanel(packet: GooberPacket?, modifier: Modifier = Modifier) {
         )
         if (packet == null) {
             Text(
-                "No data received",
+                // First-byte firmware answers reads with one battery byte, which isn't a packet
+                if (batteryOnlyReads) "This board's firmware doesn't send telemetry over Bluetooth" else "No data received",
                 color = TextSecondary,
                 fontSize = 13.sp,
                 fontStyle = FontStyle.Italic,
@@ -256,10 +260,10 @@ private fun PacketPanel(packet: GooberPacket?, modifier: Modifier = Modifier) {
             return@Column
         }
 
-        // Packet header on one line, e.g. "DEV 0x01 · MODE 0x02 · SEQ 0x2A · POST_TELEM · 33 B"
+        // Packet header on one line, e.g. "DEV 0x82 · MODE 0x0D · SEQ 0x2A · TELEMETRY · 34 B"
         Text(
             "DEV ${hex(packet.devId)} · MODE ${hex(packet.devMode)} · SEQ ${hex(packet.seqId)} · " +
-                "${packet.msgCls.name.removePrefix("MSG_TYPE_")} · ${packet.payloadSize} B",
+                "${messageClassName(packet.msgCls)} · ${packet.payloadSize} B",
             color = TextSecondary,
             fontSize = 11.sp,
             fontFamily = FontFamily.Monospace,
@@ -269,8 +273,8 @@ private fun PacketPanel(packet: GooberPacket?, modifier: Modifier = Modifier) {
         val telemetry = (packet.payload as? GooberPayload.Telemetry)?.payload ?: return@Column
         TelemetryRow("Altitude AGL", "${formatFloat(telemetry.altitudeAgl)} m")
         TelemetryRow("Vertical velocity", "${formatFloat(telemetry.verticalVelocity)} m/s")
-        TelemetryRow("X acceleration", "${formatFloat(telemetry.xAcc)} m/s²")
-        TelemetryRow("Gyro X", formatFloat(telemetry.gyrX))
+        TelemetryRow("Y acceleration", "${formatFloat(telemetry.yAcc)} m/s²")
+        TelemetryRow("Gyro Y", formatFloat(telemetry.gyrY))
         TelemetryRow("Pyro state", formatPyroState(telemetry.pyroState))
         TelemetryRow("Satellites", "${telemetry.sats}")
         TelemetryRow("Flight state", hex(telemetry.flightState))
@@ -288,6 +292,9 @@ private fun TelemetryRow(label: String, value: String) {
 }
 
 private fun hex(value: UByte): String = "0x${value.toString(16).padStart(2, '0').uppercase()}"
+
+// A packet's class by its firmware name, e.g. "TELEMETRY", or as hex if the app doesn't know it
+private fun messageClassName(code: UByte): String = AscentMessageClass.fromCode(code)?.name ?: hex(code)
 
 // What each command button's color means; shown in the key under the buttons
 private enum class CommandKind(val color: Color, val title: String, val description: String) {

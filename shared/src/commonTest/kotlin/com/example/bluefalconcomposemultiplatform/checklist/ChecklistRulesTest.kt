@@ -24,7 +24,7 @@ class ChecklistRulesTest {
         sats: UByte = 9u
     ) = GooberPostTelemetryPayload(
         timestamp = 0u, latitude = 0, longitude = 0,
-        altitudeAgl = 0f, verticalVelocity = 0f, xAcc = 0f, gyrX = 0f,
+        altitudeAgl = 0f, verticalVelocity = 0f, yAcc = 0f, gyrY = 0f,
         pyroState = pyroState, sats = sats, flightState = 0u, batteryVoltage = batteryRaw
     )
 

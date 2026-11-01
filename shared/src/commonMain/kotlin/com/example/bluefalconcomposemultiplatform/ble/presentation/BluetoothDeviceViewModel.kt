@@ -138,7 +138,8 @@ class BluetoothDeviceViewModel(
                                 connected = false,
                                 lastSeenAt = now(),
                                 lastTelemetry = null,
-                                lastTelemetryAt = null
+                                lastTelemetryAt = null,
+                                batteryOnlyReads = false
                             )
                         }
                         state.copy(
@@ -183,6 +184,13 @@ class BluetoothDeviceViewModel(
                             
                             // Parse the bytes using gooberParse
                             val parsedPacket = gooberParse(bytes, bytes.size, debug = true)
+
+                            // First-byte firmware (flight, dev) answers reads with a single battery byte
+                            // and sends no telemetry over Bluetooth; packet firmware answers with a packet
+                            when {
+                                bytes.size == 1 -> setBatteryOnlyReads(event.macId, true)
+                                parsedPacket != null -> setBatteryOnlyReads(event.macId, false)
+                            }
                             
                             if (parsedPacket != null) {
                                 // println("DEBUG: Successfully parsed Goober packet")
@@ -304,6 +312,18 @@ class BluetoothDeviceViewModel(
                 )
             }
             state.copy(devices = devices, now = heardAt, updateVersion = state.updateVersion + 1)
+        }
+    }
+
+    // Records whether a board's reads are single bytes. Reads arrive every few milliseconds, so the state
+    // only changes when the answer does.
+    private fun setBatteryOnlyReads(macId: String, batteryOnly: Boolean) {
+        if (_deviceState.value.devices[macId]?.batteryOnlyReads == batteryOnly) return
+        _deviceState.update { state ->
+            val device = state.devices[macId] ?: return@update state
+            val devices = HashMap(state.devices)
+            devices[macId] = device.copy(batteryOnlyReads = batteryOnly)
+            state.copy(devices = devices)
         }
     }
 
