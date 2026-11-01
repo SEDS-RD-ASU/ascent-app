@@ -9,5 +9,7 @@ data class BluetoothDeviceState(
     val bluetoothStatus: BluetoothStatus = BluetoothStatus.Starting,
     // When the current scan started and when the state was last refreshed, on the view model's clock
     val scanStartedAt: Duration? = null,
-    val now: Duration = Duration.ZERO
+    val now: Duration = Duration.ZERO,
+    // The wall clock (milliseconds since 1970) at the last refresh, for the pyro arming countdown
+    val nowMillis: Long = 0L
 )

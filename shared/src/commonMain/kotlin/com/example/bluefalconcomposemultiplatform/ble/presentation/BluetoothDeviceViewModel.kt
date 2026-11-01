@@ -4,8 +4,10 @@ import com.example.bluefalconcomposemultiplatform.ble.data.BleDelegate
 import com.example.bluefalconcomposemultiplatform.ble.data.BluetoothStatus
 import com.example.bluefalconcomposemultiplatform.ble.data.DeviceEvent
 import com.example.bluefalconcomposemultiplatform.ble.data.PlatformBluetooth
+import com.example.bluefalconcomposemultiplatform.checklist.currentEpochMillis
 import com.example.bluefalconcomposemultiplatform.gooberParse
 import com.example.bluefalconcomposemultiplatform.GooberPacket
+import com.example.bluefalconcomposemultiplatform.GooberPayload
 import dev.bluefalcon.BlueFalcon
 import dev.bluefalcon.BluetoothCharacteristic
 import dev.bluefalcon.BluetoothManagerState
@@ -130,8 +132,18 @@ class BluetoothDeviceViewModel(
                         val updateDevices = state.devices.toMutableMap()
                         updateDevices[event.macId]?.let {
                             // Count the moment of disconnecting as "heard", so the card doesn't show
-                            // as gone before the board's broadcasts come back
-                            updateDevices[event.macId] = it.copy(connected = false, lastSeenAt = now())
+                            // as gone before the board's broadcasts come back. Drop the stored telemetry
+                            // too: after a reconnect the checklist waits for a packet from the new
+                            // connection instead of judging the old one.
+                            updateDevices[event.macId] = it.copy(
+                                connected = false,
+                                lastSeenAt = now(),
+                                lastTelemetry = null,
+                                lastTelemetryAt = null,
+                                batteryOnlyReads = false,
+                                // A disconnect disarms the board
+                                pyroArmedAtMillis = null
+                            )
                         }
                         state.copy(
                             devices = HashMap(updateDevices),
@@ -175,6 +187,13 @@ class BluetoothDeviceViewModel(
                             
                             // Parse the bytes using gooberParse
                             val parsedPacket = gooberParse(bytes, bytes.size, debug = true)
+
+                            // First-byte firmware (flight, dev) answers reads with a single battery byte
+                            // and sends no telemetry over Bluetooth; packet firmware answers with a packet
+                            when {
+                                bytes.size == 1 -> setBatteryOnlyReads(event.macId, true)
+                                parsedPacket != null -> setBatteryOnlyReads(event.macId, false)
+                            }
                             
                             if (parsedPacket != null) {
                                 // println("DEBUG: Successfully parsed Goober packet")
@@ -188,6 +207,21 @@ class BluetoothDeviceViewModel(
                                 _parsedPackets.update { current ->
                                     current.toMutableMap().apply {
                                         put(event.macId, parsedPacket)
+                                    }
+                                }
+
+                                // Keep the latest telemetry per board for the pre-flight checklist. Moving
+                                // `now` along with it keeps the packet's age from going negative.
+                                (parsedPacket.payload as? GooberPayload.Telemetry)?.let { telemetry ->
+                                    val receivedAt = now()
+                                    _deviceState.update { state ->
+                                        val device = state.devices[event.macId] ?: return@update state
+                                        val devices = HashMap(state.devices)
+                                        devices[event.macId] = device.copy(
+                                            lastTelemetry = telemetry.payload,
+                                            lastTelemetryAt = receivedAt
+                                        )
+                                        state.copy(devices = devices, now = receivedAt)
                                     }
                                 }
                             } else {
@@ -284,12 +318,37 @@ class BluetoothDeviceViewModel(
         }
     }
 
+    // Records whether a board's reads are single bytes. Reads arrive every few milliseconds, so the state
+    // only changes when the answer does.
+    private fun setBatteryOnlyReads(macId: String, batteryOnly: Boolean) {
+        if (_deviceState.value.devices[macId]?.batteryOnlyReads == batteryOnly) return
+        _deviceState.update { state ->
+            val device = state.devices[macId] ?: return@update state
+            val devices = HashMap(state.devices)
+            devices[macId] = device.copy(batteryOnlyReads = batteryOnly)
+            state.copy(devices = devices)
+        }
+    }
+
+    // Arms a connected board's pops from now (wall clock), or disarms them with null. Arming also moves
+    // nowMillis to the arming time, so the countdown shows 2:00 straight away instead of waiting for the
+    // next refresh (an older nowMillis would read as a clock that went backwards).
+    private fun setPyroArmedAt(macId: String, armedAtMillis: Long?) {
+        _deviceState.update { state ->
+            val device = state.devices[macId] ?: return@update state
+            if (armedAtMillis != null && !device.connected) return@update state
+            val devices = HashMap(state.devices)
+            devices[macId] = device.copy(pyroArmedAtMillis = armedAtMillis)
+            state.copy(devices = devices, nowMillis = armedAtMillis ?: state.nowMillis)
+        }
+    }
+
     private fun refreshBluetoothStatus() {
         val status = platformBluetooth.problem()
             ?: if (blueFalcon.managerState.value == BluetoothManagerState.Ready) BluetoothStatus.Ready
             else notReadyReason()
         val wasReady = _deviceState.value.bluetoothStatus == BluetoothStatus.Ready
-        _deviceState.update { it.copy(bluetoothStatus = status, now = now()) }
+        _deviceState.update { it.copy(bluetoothStatus = status, now = now(), nowMillis = currentEpochMillis()) }
         if (status == BluetoothStatus.Ready && !wasReady) {
             startScan()
         }
@@ -361,85 +420,52 @@ class BluetoothDeviceViewModel(
         } ?: println("DEBUG: Target characteristic not found for device $macId")
     }
 
+    // The characteristic the app reads and writes (UUID 00000001), once services are discovered
+    private fun findCommandCharacteristic(peripheral: BluetoothPeripheral): BluetoothCharacteristic? =
+        peripheral.services.values.flatMap { it.characteristics }.firstOrNull { characteristic ->
+            val normalized = normalizeUuid(characteristic.uuid.toString())
+            listOf("00000001-0000-1000-8000-00805f9b34fb", "0001", "00000001").any { normalized == normalizeUuid(it) }
+        }
+
     /**
-     * Sends a single byte command to the BLE characteristic with UUID 00000001.
-     * Writes the byte sequence: 0x69 0x00 0x01 (MSG_TYPE) 0x01
-     * 
-     * @param macId The MAC ID of the device
-     * @param msgType The MSG_TYPE byte value (0-255)
+     * Sends a board command as [code, 0x21, 0x00, code, 0x00] (see commandPacket). A pop is sent only while
+     * that board is armed, checked here on the wall clock whatever the screen shows, and sending it ends the
+     * arming.
      */
-    public fun sendSingleByteCommand(macId: String, msgType: UByte) {
-        _deviceState.value.devices[macId]?.let { deviceState ->
-            if (!deviceState.connected) {
-                return@let
+    private fun sendCommand(macId: String, command: BoardCommand) {
+        val device = _deviceState.value.devices[macId] ?: return
+        if (!device.connected) return
+        if (!canSend(command, armedTimeLeft(device.pyroArmedAtMillis, currentEpochMillis()))) {
+            println("Not sending ${command.name}: ${device.peripheral.name} isn't armed")
+            return
+        }
+        val characteristic = findCommandCharacteristic(device.peripheral) ?: return
+
+        // A pop ends the arming, so each pop needs a fresh arm
+        if (command.confirmation == Confirmation.ArmAndHold) {
+            _deviceState.update { state ->
+                val current = state.devices[macId] ?: return@update state
+                val devices = HashMap(state.devices)
+                devices[macId] = current.copy(pyroArmedAtMillis = null)
+                state.copy(devices = devices)
             }
-            
-            // Create the byte array: 0x69 0x00 0x01 (MSG_TYPE) 0x00
-            val byteArray = byteArrayOf(
-                0x69.toByte(),
-                0x00.toByte(),
-                0x01.toByte(),
-                msgType.toByte(),
-                0x01.toByte(),
-                0x01.toByte()
-            )
-            
-            // Get fresh device state and find characteristic from current state
-            _deviceState.value.devices[macId]?.let { currentDeviceState ->
-                // Find the target characteristic (UUID 00000001) from current state
-                val targetCharacteristic = currentDeviceState.peripheral.services.values.flatMap { it.characteristics }
-                    .firstOrNull { characteristic ->
-                        val characteristicUuidString = characteristic.uuid.toString()
-                        val normalizedCharUuid = normalizeUuid(characteristicUuidString)
-                        val targetUuidStrings = listOf(
-                            "00000001-0000-1000-8000-00805f9b34fb",
-                            "0001",
-                            "00000001"
-                        )
-                        targetUuidStrings.any { target ->
-                            val normalizedTarget = normalizeUuid(target)
-                            normalizedCharUuid == normalizedTarget
-                        }
-                    }
-                
-                targetCharacteristic?.let { characteristic ->
-                    // Convert byte array to string - each byte becomes a character
-                    // This is binary-safe and preserves exact byte values (like "123" example)
-                    val binaryString = buildString {
-                        byteArray.forEach { byte ->
-                            append(byte.toInt().toChar())
-                        }
-                    }
-                    
-                    println("DEBUG WRITE: Sending command to ${currentDeviceState.peripheral.name}")
-                    println("  - MSG_TYPE: 0x${msgType.toString(16).padStart(2, '0').uppercase()}")
-                    println("  - Characteristic UUID: ${characteristic.uuid}")
-                    println("  - Byte Array: ${byteArray.joinToString(" ") { byte -> 
-                        val hex = (byte.toInt() and 0xFF).toString(16).uppercase()
-                        "0x${hex.padStart(2, '0')}"
-                    }}")
-                    println("  - String length: ${binaryString.length} chars")
-                    
-                    // Stop continuous reading to allow write
-                    println("  - Stopping continuous reading...")
-                    readingJobs[macId]?.cancel()
-                    readingJobs.remove(macId)
-                    
-                    // Wait for cancellation to complete, then write
-                    CoroutineScope(Dispatchers.IO).launch {
-                        delay(200) // Wait for read cancellation to complete
-                        println("  - Calling writeCharacteristic with binary String...")
-                        blueFalcon.writeCharacteristic(currentDeviceState.peripheral, characteristic, binaryString, null)
-                        println("  - Write initiated, waiting for callback...")
-                        
-                        // Resume reading after a longer delay if no callback
-                        delay(2000)
-                        if (deviceState.connected && readingJobs[macId] == null) {
-                            println("  - No callback received, resuming reading...")
-                            startContinuousReading(macId, currentDeviceState.peripheral)
-                        }
-                    }
-                }
+        }
+
+        val packet = commandPacket(command)
+        println("Sending ${command.name} to ${device.peripheral.name}: ${packet.joinToString(" ") { it.toHexString() }}")
+
+        // Stop the read loop so the write isn't stuck behind reads, write, then restart reads when the
+        // write is acknowledged (OnCharacteristicWriteComplete) or after 2 s
+        readingJobs[macId]?.cancel()
+        readingJobs.remove(macId)
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(200)
+            // Raw bytes: the String and ByteArray versions of writeCharacteristic re-encode them as text
+            blueFalcon.writeCharacteristicWithoutEncoding(device.peripheral, characteristic, packet, null)
+            delay(2000)
+            val current = _deviceState.value.devices[macId]
+            if (current?.connected == true && readingJobs[macId] == null) {
+                startContinuousReading(macId, current.peripheral)
             }
         }
     }
@@ -468,9 +494,9 @@ class BluetoothDeviceViewModel(
                     blueFalcon.writeCharacteristic(deviceState.peripheral, event.characteristic, event.value, null)
                 }
             }
-            is UiEvent.OnSendSingleByteCommand -> {
-                sendSingleByteCommand(event.macId, event.msgType)
-            }
+            is UiEvent.OnSendCommand -> sendCommand(event.macId, event.command)
+            is UiEvent.OnArmPyro -> setPyroArmedAt(event.macId, currentEpochMillis())
+            is UiEvent.OnDisarmPyro -> setPyroArmedAt(event.macId, null)
         }
     }
 
