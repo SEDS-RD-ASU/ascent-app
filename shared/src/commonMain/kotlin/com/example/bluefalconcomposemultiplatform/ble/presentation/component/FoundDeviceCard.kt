@@ -1,18 +1,25 @@
 package com.example.bluefalconcomposemultiplatform.ble.presentation.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,8 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,11 +41,23 @@ import com.example.bluefalconcomposemultiplatform.GooberMsgType
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.GooberPayload
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
-import dev.bluefalcon.BluetoothCharacteristic
+import com.example.bluefalconcomposemultiplatform.ble.presentation.signalBars
+import com.example.bluefalconcomposemultiplatform.ui.theme.AsuGold
+import com.example.bluefalconcomposemultiplatform.ui.theme.CardBackground
+import com.example.bluefalconcomposemultiplatform.ui.theme.CardBorder
+import com.example.bluefalconcomposemultiplatform.ui.theme.CommandGreen
+import com.example.bluefalconcomposemultiplatform.ui.theme.CommandPurple
+import com.example.bluefalconcomposemultiplatform.ui.theme.CommandRed
+import com.example.bluefalconcomposemultiplatform.ui.theme.ConnectedGreen
+import com.example.bluefalconcomposemultiplatform.ui.theme.OnAsuGold
+import com.example.bluefalconcomposemultiplatform.ui.theme.SignalTrack
+import com.example.bluefalconcomposemultiplatform.ui.theme.TextPrimary
+import com.example.bluefalconcomposemultiplatform.ui.theme.TextSecondary
 import dev.bluefalcon.BluetoothService
 import kotlin.OptIn
+import kotlin.math.roundToInt
+import kotlin.time.Duration
 import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 // Multiplatform-compatible number formatting helper
 private fun formatFloat(value: Float, decimals: Int = 2): String {
@@ -81,6 +103,7 @@ fun FoundDeviceCard(
     deviceName: String?,
     macId: String,
     rssi: Float?,
+    goneFor: Duration?,
     services: List<BluetoothService>,
     connected: Boolean,
     parsedPacket: GooberPacket?,
@@ -95,7 +118,7 @@ fun FoundDeviceCard(
             cleaned.take(8).takeLast(4).padStart(4, '0')
         }
     }
-    
+
     // Target UUID: 00000001-0000-1000-8000-00805f9b34fb
     // Also handle short UUID formats (0001, 00000001)
     val targetUuidStrings = listOf(
@@ -103,595 +126,278 @@ fun FoundDeviceCard(
         "0001",                                   // Short 16-bit
         "00000001"                                // Alternative short format
     )
-    
+
     // Find the characteristic with UUID 00000001 from all services
     val targetCharacteristic = services.flatMap { it.characteristics }
         .firstOrNull { characteristic ->
-            val characteristicUuidString = characteristic.uuid.toString()
-            // println("DEBUG UI: Checking characteristic UUID: $characteristicUuidString")
-            // Compare UUID strings (normalize for comparison)
-            val normalizedCharUuid = normalizeUuidForComparison(characteristicUuidString)
+            val normalizedCharUuid = normalizeUuidForComparison(characteristic.uuid.toString())
             targetUuidStrings.any { target ->
-                val normalizedTarget = normalizeUuidForComparison(target)
-                normalizedCharUuid == normalizedTarget
+                normalizedCharUuid == normalizeUuidForComparison(target)
             }
         }
-    Column (
-        modifier = Modifier
-            .padding(10.dp)
-            .fillMaxWidth()
-            .wrapContentHeight()
-            .border(
-                width = 2.dp,
-                color = MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(10.dp)
-            )
-            .background(
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(10.dp)
-            )
-            .padding(16.dp),
 
-        ) {
+    // A board that has gone quiet is dimmed and can't be connected to until it's heard again
+    val gone = goneFor != null
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .padding(vertical = 5.dp)
+            .fillMaxWidth()
+            .alpha(if (gone) 0.42f else 1f)
+            .clip(shape)
+            .background(CardBackground)
+            .border(1.dp, CardBorder, shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "$deviceName",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontSize = 14.sp,
+                    color = TextPrimary,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
-                rssi?.let {
-                    Text(
-                        text = "RSSI: $rssi",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-                Text(
-                    text = "${if (connected) "✅ Connected" else "❌ Disconnected"}",
-                    color = if (connected) MaterialTheme.colorScheme.onPrimary 
-                           else MaterialTheme.colorScheme.onPrimary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            if (!connected) {
-                Button(
-                    onClick = {
-                        onEvent(UiEvent.OnConnectClick(macId))
-                    },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Text("Connect")
-                }
-            } else {
-                Button(
-                    onClick = {
-                        onEvent(UiEvent.OnDisconnectClick(macId))
-                    },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text("Disconnect")
-                }
-            }
-        }
-        
-        // Display parsed Goober packet if connected
-        if (connected) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surface,
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline,
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                    .padding(12.dp)
-            ) {
-                Text(
-                    "Latest GOOBER Packet:",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                parsedPacket?.let { packet ->
-                    Column {
-                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(
-                                "DEV_ID: ",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "0x${packet.devId.toString(16).padStart(2, '0').uppercase()}",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
+                    when {
+                        connected -> {
+                            Box(Modifier.size(8.dp).background(ConnectedGreen, CircleShape))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Connected", color = TextSecondary, fontSize = 13.sp)
                         }
-                        
-                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(
-                                "DEV_MODE: ",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "0x${packet.devMode.toString(16).padStart(2, '0').uppercase()}",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        
-                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(
-                                "SEQ_ID: ",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "0x${packet.seqId.toString(16).padStart(2, '0').uppercase()}",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        
-                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(
-                                "MSG_CLS: ",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                packet.msgCls.name,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        
-                        Row(modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(
-                                "PAYLOAD_SIZE: ",
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "${packet.payloadSize} bytes",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        
-                        // Display telemetry payload if available
-                        if (packet.payload is GooberPayload.Telemetry) {
-                            val telemetry = (packet.payload as GooberPayload.Telemetry).payload
-                            Column(
-                                modifier = Modifier
-                                    .padding(top = 8.dp)
-                                    .fillMaxWidth()
-                            ) {
+                        goneFor != null -> Text(
+                            "Not seen for ${goneFor.inWholeSeconds} s",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        else -> {
+                            SignalBars(signalBars(rssi))
+                            rssi?.let {
+                                Spacer(Modifier.width(6.dp))
                                 Text(
-                                    "Telemetry Payload:",
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 6.dp)
+                                    "${it.roundToInt()} dBm",
+                                    color = TextSecondary,
+                                    fontSize = 13.sp,
+                                    fontFamily = FontFamily.Monospace
                                 )
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Timestamp: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${telemetry.timestamp}",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Altitude AGL: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${formatFloat(telemetry.altitudeAgl)} m",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Vertical Velocity: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${formatFloat(telemetry.verticalVelocity)} m/s",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "X Acceleration: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${formatFloat(telemetry.xAcc)} m/s²",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Gyro X: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        formatFloat(telemetry.gyrX),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Pyro State: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        formatPyroState(telemetry.pyroState),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        " (0x${telemetry.pyroState.toString(16).padStart(2, '0').uppercase()})",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 8.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Satellites: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${telemetry.sats}",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Flight State: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "0x${telemetry.flightState.toString(16).padStart(2, '0').uppercase()}",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                
-                                Row(modifier = Modifier.padding(bottom = 3.dp)) {
-                                    Text(
-                                        "Battery Voltage: ",
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        "${formatDouble(telemetry.batteryVoltage.toDouble() / 2500.0)} V",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
                             }
                         }
                     }
-                } ?: Text(
-                    "No data received",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                )
-            }
-            
-            // Show characteristic with UUID 00000001 if found
-            targetCharacteristic?.let { characteristic ->
-                Column(
-                    modifier = Modifier.padding(top = 12.dp)
-                ) {
-                    CharacteristicsRow(macId, characteristic, onEvent)
                 }
+            }
+            if (connected) {
+                OutlinedButton(
+                    onClick = { onEvent(UiEvent.OnDisconnectClick(macId)) },
+                    border = BorderStroke(1.dp, TextPrimary.copy(alpha = 0.28f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text("Disconnect", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = { onEvent(UiEvent.OnConnectClick(macId)) },
+                    enabled = !gone,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AsuGold,
+                        contentColor = OnAsuGold,
+                        disabledContainerColor = SignalTrack,
+                        disabledContentColor = TextPrimary
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text("Connect", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Telemetry and commands for a connected board
+        if (connected) {
+            PacketPanel(parsedPacket, Modifier.padding(top = 12.dp))
+            // Commands need the target characteristic, which appears once services are discovered
+            if (targetCharacteristic != null) {
+                CommandPanel(macId, onEvent, Modifier.padding(top = 10.dp))
             }
         }
     }
 }
-
-// ServiceRow removed - no longer displaying service name or UUID
 
 @Composable
-fun CharacteristicsRow(
-    macId: String,
-    characteristic: BluetoothCharacteristic,
-    onEvent: (UiEvent) -> Unit
-) {
-    // State to track which confirmation dialog to show
-    var confirmationDialogType by remember { mutableStateOf<ConfirmationDialogType?>(null) }
-    
-    // Placeholder functions for buttons
-    fun onTxLockClick() {
-        confirmationDialogType = ConfirmationDialogType.TX_LOCK
-    }
-    
-    fun onAuxClick() {
-        confirmationDialogType = ConfirmationDialogType.AUX
-    }
-    
-    fun onRebootClick() {
-        confirmationDialogType = ConfirmationDialogType.REBOOT
-    }
-    
-    fun onWakeupClick() {
-        confirmationDialogType = ConfirmationDialogType.WAKEUP
-    }
-    
-    fun onApogeeClick() {
-        confirmationDialogType = ConfirmationDialogType.APOGEE
-    }
-    
-    fun onMainsClick() {
-        confirmationDialogType = ConfirmationDialogType.MAINS
-    }
-    
-    // Execute the actual action after confirmation
-    fun executeAction(type: ConfirmationDialogType) {
-        when (type) {
-            ConfirmationDialogType.TX_LOCK -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_TXLOCK_ACTIVATE.value))
-            }
-            ConfirmationDialogType.AUX -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_AUX_ACTIVATE.value))
-            }
-            ConfirmationDialogType.REBOOT -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_REBOOT.value))
-            }
-            ConfirmationDialogType.WAKEUP -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_WAKEUP.value))
-            }
-            ConfirmationDialogType.APOGEE -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_POP_APOGEE.value))
-            }
-            ConfirmationDialogType.MAINS -> {
-                onEvent(UiEvent.OnSendSingleByteCommand(macId, GooberMsgType.MSG_TYPE_REQ_POP_MAINS.value))
-            }
-        }
-    }
-    
+private fun PacketPanel(packet: GooberPacket?, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
     Column(
-        modifier = Modifier
-            .padding(4.dp)
-            .background(
-                MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(4.dp)
-            )
-            .padding(6.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.35f))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), shape)
+            .padding(12.dp)
     ) {
-        
-        // Top row: TX Lock, AUX: NA, Reboot
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        ) {
-            // TX Lock button (red)
-            Button(
-                onClick = { onTxLockClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD32F2F) // Red
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("TX Lock", color = Color.White, fontSize = 10.sp)
-            }
-            
-            // AUX: NA button (green)
-            Button(
-                onClick = { onAuxClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF8E24AA) // Purple
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("AUX", color = Color.White, fontSize = 10.sp)
-            }
-            
-            // Reboot button (red)
-            Button(
-                onClick = { onRebootClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFD32F2F) // Red
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("Reboot", color = Color.White, fontSize = 10.sp)
-            }
-        }
-        
-        // Bottom row: Wakeup, Apogee, Mains
-        Row(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Wakeup button (green)
-            Button(
-                onClick = { onWakeupClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF388E3C) // Green
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("Wakeup", color = Color.White, fontSize = 10.sp)
-            }
-            
-            // Apogee button (blue)
-            Button(
-                onClick = { onApogeeClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1976D2) // Blue
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("Apogee", color = Color.White, fontSize = 10.sp)
-            }
-            
-            // Mains button (dark gray with blue border)
-            Button(
-                onClick = { onMainsClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 2.dp),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1976D2) // Blue
-                ),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text("Mains", color = Color.White, fontSize = 10.sp)
-            }
-        }
-        
-        // Confirmation Dialog
-        confirmationDialogType?.let { dialogType ->
-            ConfirmationDialog(
-                dialogType = dialogType,
-                onConfirm = {
-                    executeAction(dialogType)
-                    confirmationDialogType = null
-                },
-                onDismiss = {
-                    confirmationDialogType = null
-                }
+        Text(
+            "LATEST PACKET",
+            color = AsuGold,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.5.sp
+        )
+        if (packet == null) {
+            Text(
+                "No data received",
+                color = TextSecondary,
+                fontSize = 13.sp,
+                fontStyle = FontStyle.Italic,
+                modifier = Modifier.padding(top = 6.dp)
             )
+            return@Column
         }
+
+        // Packet header on one line, e.g. "DEV 0x01 · MODE 0x02 · SEQ 0x2A · POST_TELEM · 33 B"
+        Text(
+            "DEV ${hex(packet.devId)} · MODE ${hex(packet.devMode)} · SEQ ${hex(packet.seqId)} · " +
+                "${packet.msgCls.name.removePrefix("MSG_TYPE_")} · ${packet.payloadSize} B",
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(top = 6.dp, bottom = 8.dp)
+        )
+
+        val telemetry = (packet.payload as? GooberPayload.Telemetry)?.payload ?: return@Column
+        TelemetryRow("Altitude AGL", "${formatFloat(telemetry.altitudeAgl)} m")
+        TelemetryRow("Vertical velocity", "${formatFloat(telemetry.verticalVelocity)} m/s")
+        TelemetryRow("X acceleration", "${formatFloat(telemetry.xAcc)} m/s²")
+        TelemetryRow("Gyro X", formatFloat(telemetry.gyrX))
+        TelemetryRow("Pyro state", formatPyroState(telemetry.pyroState))
+        TelemetryRow("Satellites", "${telemetry.sats}")
+        TelemetryRow("Flight state", hex(telemetry.flightState))
+        TelemetryRow("Battery", "${formatDouble(telemetry.batteryVoltage.toDouble() / 2500.0)} V")
+        TelemetryRow("Timestamp", "${telemetry.timestamp}")
     }
 }
 
-// Enum to track which confirmation dialog to show
-private enum class ConfirmationDialogType(
-    val title: String,
-    val message: String
+@Composable
+private fun TelemetryRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text(label, color = TextSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Text(value, color = TextPrimary, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+    }
+}
+
+private fun hex(value: UByte): String = "0x${value.toString(16).padStart(2, '0').uppercase()}"
+
+// What each command button's color means; shown in the key under the buttons
+private enum class CommandKind(val color: Color, val title: String, val description: String) {
+    SYSTEM(CommandRed, "System", "Locks the radio or restarts the board"),
+    AUXILIARY(CommandPurple, "Auxiliary", "Switches on the AUX output"),
+    WAKE(CommandGreen, "Wake", "Wakes the board up")
+}
+
+// Commands the app can send. Apogee and Mains (MSG_TYPE_REQ_POP_*) are deliberately left out:
+// Bluetooth can't reach the rocket in flight and the protocol doesn't confirm they were received.
+private enum class BoardCommand(
+    val label: String,
+    val kind: CommandKind,
+    val msgType: GooberMsgType,
+    val confirmTitle: String,
+    val confirmMessage: String
 ) {
-    TX_LOCK("Confirm TX Lock", "Are you sure you want to activate TX Lock?"),
-    AUX("Confirm AUX", "Are you sure you want to activate AUX?"),
-    REBOOT("Confirm Reboot", "Are you sure you want to reboot the device?"),
-    WAKEUP("Confirm Wakeup", "Are you sure you want to wake up the device?"),
-    APOGEE("Confirm Apogee", "Are you sure you want to trigger Apogee?"),
-    MAINS("Confirm Mains", "Are you sure you want to trigger Mains?")
+    TX_LOCK("TX Lock", CommandKind.SYSTEM, GooberMsgType.MSG_TYPE_REQ_TXLOCK_ACTIVATE,
+        "Confirm TX Lock", "Are you sure you want to activate TX Lock?"),
+    AUX("AUX", CommandKind.AUXILIARY, GooberMsgType.MSG_TYPE_REQ_AUX_ACTIVATE,
+        "Confirm AUX", "Are you sure you want to activate AUX?"),
+    REBOOT("Reboot", CommandKind.SYSTEM, GooberMsgType.MSG_TYPE_REQ_REBOOT,
+        "Confirm Reboot", "Are you sure you want to reboot the device?"),
+    WAKEUP("Wakeup", CommandKind.WAKE, GooberMsgType.MSG_TYPE_REQ_WAKEUP,
+        "Confirm Wakeup", "Are you sure you want to wake up the device?")
+}
+
+@Composable
+private fun CommandPanel(macId: String, onEvent: (UiEvent) -> Unit, modifier: Modifier = Modifier) {
+    // The command waiting for confirmation, if any
+    var pendingCommand by remember { mutableStateOf<BoardCommand?>(null) }
+
+    Column(modifier.fillMaxWidth()) {
+        listOf(
+            listOf(BoardCommand.TX_LOCK, BoardCommand.AUX),
+            listOf(BoardCommand.REBOOT, BoardCommand.WAKEUP)
+        ).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                row.forEach { command ->
+                    Button(
+                        onClick = { pendingCommand = command },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = command.kind.color,
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        Text(command.label, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        CommandLegend(Modifier.padding(top = 6.dp))
+    }
+
+    pendingCommand?.let { command ->
+        ConfirmationDialog(
+            command = command,
+            onConfirm = {
+                onEvent(UiEvent.OnSendSingleByteCommand(macId, command.msgType.value))
+                pendingCommand = null
+            },
+            onDismiss = { pendingCommand = null }
+        )
+    }
+}
+
+@Composable
+private fun CommandLegend(modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth()) {
+        HorizontalDivider(color = CardBorder)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CommandKind.entries.forEach { kind ->
+                Row(Modifier.weight(1f)) {
+                    Box(
+                        Modifier
+                            .padding(top = 3.dp)
+                            .size(10.dp)
+                            .background(kind.color, RoundedCornerShape(3.dp))
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Column {
+                        Text(kind.title, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(kind.description, color = TextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun ConfirmationDialog(
-    dialogType: ConfirmationDialogType,
+    command: BoardCommand,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = dialogType.title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Text(
-                text = dialogType.message,
-                fontSize = 14.sp
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("Confirm")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        title = { Text(command.confirmTitle, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+        text = { Text(command.confirmMessage, fontSize = 14.sp) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Confirm") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

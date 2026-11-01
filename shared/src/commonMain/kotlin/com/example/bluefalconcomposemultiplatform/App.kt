@@ -1,23 +1,24 @@
 package com.example.bluefalconcomposemultiplatform
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceViewModel
 import com.example.bluefalconcomposemultiplatform.ble.presentation.component.DeviceScanView
+import com.example.bluefalconcomposemultiplatform.core.presentation.AppHeader
 import com.example.bluefalconcomposemultiplatform.core.presentation.BlueFalconTheme
+import com.example.bluefalconcomposemultiplatform.core.presentation.LaunchGlowBackground
 import com.example.bluefalconcomposemultiplatform.di.AppModule
-import com.example.bluefalconcomposemultiplatform.ui.theme.Typography
+import com.example.bluefalconcomposemultiplatform.ui.theme.TextPrimary
 import dev.icerock.moko.mvvm.compose.getViewModel
 import dev.icerock.moko.mvvm.compose.viewModelFactory
 
@@ -34,7 +35,7 @@ fun App(
         val viewModel = getViewModel(
             key = "bluetooth-device-screen",
             factory = viewModelFactory {
-                BluetoothDeviceViewModel(appModule.blueFalcon)
+                BluetoothDeviceViewModel(appModule.blueFalcon, appModule.platformBluetooth)
             }
         )
 
@@ -42,27 +43,23 @@ fun App(
         val parsedPackets by viewModel.parsedPackets.collectAsState()
 
         Surface(
-            modifier = Modifier
-                .fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Transparent,
+            contentColor = TextPrimary
         ) {
-            Column {
-                Text(
-                    "GOOBER Connect",
-                    fontStyle = Typography.titleLarge.fontStyle,
-                    fontSize = Typography.titleLarge.fontSize,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 20.dp).fillMaxWidth()
-                )
-
-                DeviceScanView(
-                    state = state,
-                    parsedPackets = parsedPackets,
-                    onEvent = viewModel::onEvent
-                )
+            Box(Modifier.fillMaxSize()) {
+                // The background fills the whole screen; content stays clear of the notch and home indicator
+                LaunchGlowBackground()
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    AppHeader()
+                    DeviceScanView(
+                        state = state,
+                        parsedPackets = parsedPackets,
+                        onEvent = viewModel::onEvent,
+                        onOpenSettings = appModule.platformBluetooth::openAppSettings
+                    )
+                }
             }
-
-
         }
     }
 }

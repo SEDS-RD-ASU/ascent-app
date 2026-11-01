@@ -6,6 +6,8 @@ import dev.bluefalcon.BluetoothPeripheral
 sealed interface DeviceEvent {
     data class OnDeviceConnected(val macId: String, val peripheral: BluetoothPeripheral): DeviceEvent
     data class OnDeviceDisconnected(val macId: String): DeviceEvent
+    // A broadcast from a board we're not connected to; BlueFalcon reports every one while scanning
+    data class OnAdvertisement(val macId: String, val peripheral: BluetoothPeripheral, val rssi: Float?): DeviceEvent
     data class OnServicesDiscovered(val peripheral: BluetoothPeripheral): DeviceEvent
     data class OnCharacteristicReadComplete(val macId: String, val characteristic: BluetoothCharacteristic): DeviceEvent
     data class OnCharacteristicWriteComplete(val macId: String, val characteristic: BluetoothCharacteristic, val success: Boolean): DeviceEvent
