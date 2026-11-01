@@ -13,5 +13,10 @@ data class EnhancedBluetoothPeripheral(
     val lastSeenAt: Duration? = null,
     // The board's latest telemetry packet and when it arrived, on the view model's clock
     val lastTelemetry: GooberPostTelemetryPayload? = null,
-    val lastTelemetryAt: Duration? = null
+    val lastTelemetryAt: Duration? = null,
+    // The board's reads come back as single bytes: first-byte firmware (flight, dev), which sends its
+    // battery but no telemetry over Bluetooth
+    val batteryOnlyReads: Boolean = false,
+    // When the board's pops were armed, on the wall clock (milliseconds since 1970); null when not armed
+    val pyroArmedAtMillis: Long? = null
 )
