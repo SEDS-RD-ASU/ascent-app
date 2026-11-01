@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.AscentMessageClass
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.GooberPayload
+import com.example.bluefalconcomposemultiplatform.ble.presentation.PopContinuity
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ble.presentation.signalBars
 import com.example.bluefalconcomposemultiplatform.ui.theme.AsuGold
@@ -98,6 +99,10 @@ fun FoundDeviceCard(
     parsedPacket: GooberPacket?,
     // The board's reads are single bytes: its firmware sends no telemetry over Bluetooth
     batteryOnlyReads: Boolean,
+    // Time left before the board's arming runs out, or null when it isn't armed
+    armedTimeLeft: Duration?,
+    apogeeContinuity: PopContinuity,
+    mainsContinuity: PopContinuity,
     onEvent: (UiEvent) -> Unit
 ) {
     // Helper function to normalize UUID for comparison (handles short and full formats)
@@ -215,6 +220,9 @@ fun FoundDeviceCard(
                 CommandPanel(
                     boardName = deviceName ?: "No Name",
                     macId = macId,
+                    armedTimeLeft = armedTimeLeft,
+                    apogeeContinuity = apogeeContinuity,
+                    mainsContinuity = mainsContinuity,
                     onEvent = onEvent,
                     modifier = Modifier.padding(top = 10.dp)
                 )

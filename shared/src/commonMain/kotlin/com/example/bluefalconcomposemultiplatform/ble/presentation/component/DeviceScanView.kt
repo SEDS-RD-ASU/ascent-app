@@ -11,9 +11,13 @@ import androidx.compose.ui.unit.dp
 import com.example.bluefalconcomposemultiplatform.GooberPacket
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BluetoothDeviceState
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
+import com.example.bluefalconcomposemultiplatform.ble.presentation.armedTimeLeft
 import com.example.bluefalconcomposemultiplatform.ble.presentation.isGone
+import com.example.bluefalconcomposemultiplatform.ble.presentation.popContinuity
 import com.example.bluefalconcomposemultiplatform.ble.presentation.scanMessage
 import com.example.bluefalconcomposemultiplatform.ble.presentation.sinceLastSeen
+import com.example.bluefalconcomposemultiplatform.checklist.DROGUE_PYRO_CHANNEL
+import com.example.bluefalconcomposemultiplatform.checklist.MAIN_PYRO_CHANNEL
 import kotlin.OptIn
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
@@ -56,6 +60,9 @@ fun DeviceScanView(
                 connected = device.connected,
                 parsedPacket = parsedPackets[device.peripheral.uuid],
                 batteryOnlyReads = device.batteryOnlyReads,
+                armedTimeLeft = armedTimeLeft(device.pyroArmedAtMillis, state.nowMillis),
+                apogeeContinuity = popContinuity(DROGUE_PYRO_CHANNEL, device.lastTelemetry, device.lastTelemetryAt, state.now),
+                mainsContinuity = popContinuity(MAIN_PYRO_CHANNEL, device.lastTelemetry, device.lastTelemetryAt, state.now),
                 onEvent = onEvent
             )
         }

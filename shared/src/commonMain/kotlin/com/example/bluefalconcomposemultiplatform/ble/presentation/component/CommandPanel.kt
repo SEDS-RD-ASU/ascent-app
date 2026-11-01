@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,17 +26,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bluefalconcomposemultiplatform.ble.presentation.BoardCommand
 import com.example.bluefalconcomposemultiplatform.ble.presentation.Confirmation
+import com.example.bluefalconcomposemultiplatform.ble.presentation.PopContinuity
 import com.example.bluefalconcomposemultiplatform.ble.presentation.UiEvent
 import com.example.bluefalconcomposemultiplatform.ui.theme.PlainButton
 import com.example.bluefalconcomposemultiplatform.ui.theme.ProblemRedText
 import com.example.bluefalconcomposemultiplatform.ui.theme.TextPrimary
 import com.example.bluefalconcomposemultiplatform.ui.theme.TextSecondary
+import kotlin.time.Duration
 
 // The connected card's commands, and the dialog that confirms the ones that ask first
 @Composable
 fun CommandPanel(
     boardName: String,
     macId: String,
+    // Time left before the board's arming runs out, or null when it isn't armed
+    armedTimeLeft: Duration?,
+    apogeeContinuity: PopContinuity,
+    mainsContinuity: PopContinuity,
     onEvent: (UiEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -89,9 +96,23 @@ fun CommandPanel(
         ) {
             Text(BoardCommand.ERASE_FLASH.label, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
+        GroundTestPanel(
+            armedTimeLeft = armedTimeLeft,
+            apogeeContinuity = apogeeContinuity,
+            mainsContinuity = mainsContinuity,
+            onArm = { onEvent(UiEvent.OnArmPyro(macId)) },
+            onDisarm = { onEvent(UiEvent.OnDisarmPyro(macId)) },
+            onPop = { pending = it },
+            modifier = Modifier.padding(top = 10.dp)
+        )
     }
 
-    pending?.let { command ->
+    // A pop's dialog closes when the arming ends: switched off, timed out, or after a disconnect
+    val armed = armedTimeLeft != null
+    LaunchedEffect(armed) {
+        if (!armed && pending?.confirmation == Confirmation.ArmAndHold) pending = null
+    }
+    pending?.takeUnless { it.confirmation == Confirmation.ArmAndHold && !armed }?.let { command ->
         CommandDialog(
             command = command,
             boardName = boardName,

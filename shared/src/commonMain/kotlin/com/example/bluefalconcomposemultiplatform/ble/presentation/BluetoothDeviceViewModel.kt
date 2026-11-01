@@ -140,7 +140,9 @@ class BluetoothDeviceViewModel(
                                 lastSeenAt = now(),
                                 lastTelemetry = null,
                                 lastTelemetryAt = null,
-                                batteryOnlyReads = false
+                                batteryOnlyReads = false,
+                                // A disconnect disarms the board
+                                pyroArmedAtMillis = null
                             )
                         }
                         state.copy(
@@ -328,12 +330,25 @@ class BluetoothDeviceViewModel(
         }
     }
 
+    // Arms a connected board's pops from now (wall clock), or disarms them with null. Arming also moves
+    // nowMillis to the arming time, so the countdown shows 2:00 straight away instead of waiting for the
+    // next refresh (an older nowMillis would read as a clock that went backwards).
+    private fun setPyroArmedAt(macId: String, armedAtMillis: Long?) {
+        _deviceState.update { state ->
+            val device = state.devices[macId] ?: return@update state
+            if (armedAtMillis != null && !device.connected) return@update state
+            val devices = HashMap(state.devices)
+            devices[macId] = device.copy(pyroArmedAtMillis = armedAtMillis)
+            state.copy(devices = devices, nowMillis = armedAtMillis ?: state.nowMillis)
+        }
+    }
+
     private fun refreshBluetoothStatus() {
         val status = platformBluetooth.problem()
             ?: if (blueFalcon.managerState.value == BluetoothManagerState.Ready) BluetoothStatus.Ready
             else notReadyReason()
         val wasReady = _deviceState.value.bluetoothStatus == BluetoothStatus.Ready
-        _deviceState.update { it.copy(bluetoothStatus = status, now = now()) }
+        _deviceState.update { it.copy(bluetoothStatus = status, now = now(), nowMillis = currentEpochMillis()) }
         if (status == BluetoothStatus.Ready && !wasReady) {
             startScan()
         }
@@ -480,6 +495,8 @@ class BluetoothDeviceViewModel(
                 }
             }
             is UiEvent.OnSendCommand -> sendCommand(event.macId, event.command)
+            is UiEvent.OnArmPyro -> setPyroArmedAt(event.macId, currentEpochMillis())
+            is UiEvent.OnDisarmPyro -> setPyroArmedAt(event.macId, null)
         }
     }
 

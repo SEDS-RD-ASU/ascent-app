@@ -23,6 +23,8 @@ val PlainButton = Color(0x1CFFFFFF)       // white at 11%
 val CommandRed = Color(0xFFD32F2F)        // the pops and the arm switch
 val HoldTrack = Color(0xFF7A1E1E)         // a hold-to-confirm button before it fills
 val HoldFill = Color(0xFFE53935)          // its fill
+val GroundTestBackground = Color(0x1AD32F2F)  // CommandRed at 10%
+val GroundTestBorder = Color(0x59FF8A80)      // ProblemRedText at 35%
 
 // Pre-flight checklist (the tick itself is ConnectedGreen, #3DDC84)
 val CheckGreenText = Color(0xFF7EE8AE)          // stamps and fine readings
