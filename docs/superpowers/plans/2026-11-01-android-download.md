@@ -361,7 +361,7 @@ jobs:
 ```bash
 ruby -ryaml -e 'w = YAML.load_file(".github/workflows/android.yml"); puts w["jobs"]["android"]["steps"].map { |s| s["name"] || s["uses"] }'
 grep -c "GOOBER_KEYSTORE_FILE\|GOOBER_KEYSTORE_PASSWORD\|GOOBER_KEY_ALIAS" .github/workflows/android.yml
-grep -o "secrets\.[A-Z_]*" .github/workflows/android.yml | sort -u
+grep -o "secrets\.[A-Z0-9_]*" .github/workflows/android.yml | sort -u
 ```
 Expected:
 - the steps, in order: `actions/checkout@v4`, `actions/setup-java@v4`, `gradle/actions/setup-gradle@v4`, "Build the app (check only)", "Unpack the signing key", "Build the signed app", "Publish it as the latest release";
