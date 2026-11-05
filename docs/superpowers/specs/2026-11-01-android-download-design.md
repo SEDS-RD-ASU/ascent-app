@@ -1,7 +1,7 @@
 # Android download link
 
 - **Date:** 2026-11-01
-- **Status:** Design approved; not implemented yet
+- **Status:** Implemented on branch `android-download`; the Android app builds and signs on the Mac; the first GitHub release and an install on an Android phone not yet checked
 - **Platforms:** Android. iPhones come later, through TestFlight, once the team has a paid Apple Developer account.
 - **Branch:** `android-download`, from `main`
 
