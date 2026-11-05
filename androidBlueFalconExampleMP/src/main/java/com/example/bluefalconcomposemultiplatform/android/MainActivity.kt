@@ -10,7 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.bluefalconcomposemultiplatform.App
 import com.example.bluefalconcomposemultiplatform.di.AppModule
 
@@ -18,10 +18,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (needToAskForRuntimePermissions()) {
-            askForRuntimePermissions {
-                // Do something when permission granted
-            }
+        // Ask for whatever Bluetooth scanning still needs. The scan screen checks again every second, so
+        // scanning starts as soon as it's allowed.
+        val missing = missingPermissions()
+        if (missing.isNotEmpty()) {
+            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+                if (results.values.any { granted -> !granted }) {
+                    Toast.makeText(this, "Cannot scan without permission.", Toast.LENGTH_LONG).show()
+                }
+            }.launch(missing.toTypedArray())
         }
 
         setContent {
@@ -33,44 +38,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun askForRuntimePermissions(doWhenPermissionAcquired: ()-> Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-
-            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-
-                if (permissions[Manifest.permission.BLUETOOTH_SCAN] == true &&
-                    permissions[Manifest.permission.BLUETOOTH_CONNECT] == true &&
-                    permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-                ) {
-                    doWhenPermissionAcquired()
-                } else {
-                    Toast.makeText(this, "Cannot scan without permission.", Toast.LENGTH_LONG)
-                        .show()
-                }
-            }.apply {
-                launch(
-                    arrayOf(
-                        Manifest.permission.BLUETOOTH_SCAN,
-                        Manifest.permission.BLUETOOTH_CONNECT,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    )
-                )
-            }
+    // What Bluetooth scanning needs, as AndroidPlatformBluetooth checks it: nearby devices (scan and connect)
+    // on Android 12 and newer, precise location before that
+    private fun missingPermissions(): List<String> {
+        val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+        return needed.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
     }
-
-    private fun needToAskForRuntimePermissions() =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-
-                ((ActivityCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
-
-                        ActivityCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
-
-                        ActivityCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED))
 }

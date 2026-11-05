@@ -9,11 +9,27 @@ android {
     namespace = "com.example.bluefalconcomposemultiplatform.android"
     compileSdk = 34
     defaultConfig {
-        applicationId = "com.example.bluefalconcomposemultiplatform.android"
+        // What phones recognise the app by; once people have installed it, keep it
+        applicationId = "io.github.sedsrdasu.gooberconnect"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // GitHub's workflow passes its run number, so each build counts as an update. Builds on a Mac stay 1 / "1.0"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0"
+    }
+    // The release signing key, from the environment: GitHub's workflow sets these from the repo's secrets.
+    // Without them, release builds stay unsigned, as before.
+    val keystore = System.getenv("GOOBER_KEYSTORE_FILE")
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = project.file(keystore)
+                storePassword = System.getenv("GOOBER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GOOBER_KEY_ALIAS")
+                // A PKCS12 key file has one password for the file and the key
+                keyPassword = System.getenv("GOOBER_KEYSTORE_PASSWORD")
+            }
+        }
     }
     buildFeatures {
         compose = true
@@ -29,6 +45,7 @@ android {
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            if (keystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
